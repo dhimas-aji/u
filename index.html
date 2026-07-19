@@ -1,0 +1,766 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>U — listening room</title>
+<style>
+  :root {
+    --paper: #FAFAF6;
+    --ink: #141412;
+    --ink-soft: rgba(20, 20, 18, 0.55);
+    --line: rgba(20, 20, 18, 0.16);
+    --accent: #D6301C;
+    --sheet: rgba(250, 250, 246, 0.94);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0F0F0E;
+      --ink: #F0EFE9;
+      --ink-soft: rgba(240, 239, 233, 0.55);
+      --line: rgba(240, 239, 233, 0.18);
+      --accent: #FF5A3C;
+      --sheet: rgba(15, 15, 14, 0.94);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #FAFAF6;
+    --ink: #141412;
+    --ink-soft: rgba(20, 20, 18, 0.55);
+    --line: rgba(20, 20, 18, 0.16);
+    --accent: #D6301C;
+    --sheet: rgba(250, 250, 246, 0.94);
+  }
+  :root[data-theme="dark"] {
+    --paper: #0F0F0E;
+    --ink: #F0EFE9;
+    --ink-soft: rgba(240, 239, 233, 0.55);
+    --line: rgba(240, 239, 233, 0.18);
+    --accent: #FF5A3C;
+    --sheet: rgba(15, 15, 14, 0.94);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+
+  #app { position: fixed; inset: 0; overflow: hidden; background: var(--paper); }
+  #field { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* ---------- header ---------- */
+  header {
+    position: absolute; top: 12px; left: 12px; z-index: 4;
+    display: flex; align-items: center; gap: 12px; pointer-events: none;
+    background: var(--sheet); border: 1px solid var(--line); padding: 8px 14px 8px 10px;
+  }
+  header svg { display: block; }
+  header svg path { stroke: var(--ink); }
+  .wordmark { display: flex; flex-direction: column; gap: 2px; }
+  .wordmark b {
+    font-weight: 400; font-size: 15px; letter-spacing: 0.04em;
+    filter: url(#wob);
+  }
+  .wordmark span { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); }
+
+  /* ---------- hint / drop zone ---------- */
+  #hint {
+    position: absolute; z-index: 5; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(420px, calc(100% - 48px));
+    border: 1.5px dashed var(--ink-soft);
+    background: var(--sheet);
+    padding: 22px 22px 20px; text-align: center;
+  }
+  #hint.drag { border-color: var(--accent); }
+  #hint h1 { font-size: 17px; font-weight: 400; margin: 0 0 8px; filter: url(#wob); text-wrap: balance; }
+  #hint p { margin: 0 0 16px; color: var(--ink-soft); line-height: 1.55; font-size: 12px; }
+  #hint.hidden, .hidden { display: none !important; }
+  .btnrow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  button {
+    font: inherit; color: var(--ink); background: transparent;
+    border: 1.5px solid var(--ink); border-radius: 0;
+    padding: 8px 14px; cursor: pointer;
+    text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px;
+  }
+  button:hover { background: var(--ink); color: var(--paper); }
+  button:focus-visible { outline: 2px dashed var(--accent); outline-offset: 3px; }
+  button.icon { padding: 8px 12px; text-transform: none; letter-spacing: 0; }
+
+  /* ---------- bottom bar ---------- */
+  #bar {
+    position: absolute; z-index: 6; left: 0; right: 0; bottom: 0;
+    background: var(--sheet);
+    border-top: 1.5px solid var(--ink);
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    display: flex; align-items: center; gap: 14px;
+  }
+  #prog {
+    position: absolute; left: 0; right: 0; top: -2px; height: 4px; cursor: pointer;
+  }
+  #prog i {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    background: var(--accent); display: block;
+  }
+  #nowplaying {
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; overflow: hidden;
+  }
+  #nowtitle {
+    font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    filter: url(#wob);
+  }
+  #nowmode { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); white-space: nowrap; }
+  #time { color: var(--ink-soft); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #tracksbtn { display: none; }
+
+  /* ---------- tracklist rail ---------- */
+  #rail {
+    position: absolute; z-index: 5; top: 0; right: 0; bottom: 0;
+    width: 300px; background: var(--sheet);
+    border-left: 1.5px solid var(--ink);
+    display: flex; flex-direction: column;
+    padding: 18px 0 64px;
+  }
+  #rail .railhead {
+    padding: 0 18px 12px; border-bottom: 1px solid var(--line);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #rail .railhead button { border: none; padding: 2px 4px; font-size: 14px; line-height: 1; display: none; }
+  #tracks { list-style: none; margin: 0; padding: 6px 0; overflow-y: auto; flex: 1; }
+  #tracks li { display: block; }
+  #tracks button {
+    display: flex; width: 100%; text-align: left; align-items: baseline; gap: 10px;
+    border: none; padding: 9px 18px; text-transform: none; letter-spacing: 0;
+    font-size: 12.5px; background: transparent;
+  }
+  #tracks button:hover { background: var(--ink); color: var(--paper); }
+  #tracks .n { color: var(--ink-soft); font-size: 10.5px; width: 18px; flex: none; font-variant-numeric: tabular-nums; }
+  #tracks button:hover .n, #tracks button:hover .mode, #tracks button:hover .len { color: var(--paper); }
+  #tracks .t { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #tracks .mode { font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); flex: none; }
+  #tracks .len { color: var(--ink-soft); font-size: 10.5px; flex: none; font-variant-numeric: tabular-nums; }
+  #tracks li.current button { color: var(--accent); }
+  #tracks li.current .n::before { content: "→"; margin-right: 2px; color: var(--accent); }
+  #tracks li.hasfile .t::after { content: " ·"; color: var(--accent); }
+  #rail .note {
+    padding: 12px 18px 0; border-top: 1px solid var(--line);
+    color: var(--ink-soft); font-size: 10.5px; line-height: 1.6;
+  }
+
+  /* ---------- mobile: rail becomes bottom sheet ---------- */
+  @media (max-width: 880px) {
+    #rail {
+      top: auto; left: 0; right: 0; width: auto; max-height: 62dvh;
+      border-left: none; border-top: 1.5px solid var(--ink);
+      transform: translateY(100%); transition: transform 0.28s ease;
+      padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+    #rail.open { transform: translateY(0); }
+    #rail { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+    #rail .railhead button { display: block; }
+    #tracksbtn { display: inline-block; }
+    header svg { width: 30px; height: auto; }
+    #bar { gap: 8px; padding-left: 12px; padding-right: 12px; }
+    #time { display: none; }
+    #nowplaying { flex-direction: column; gap: 1px; align-items: flex-start; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #rail { transition: none; }
+  }
+</style>
+
+<div id="app">
+  <canvas id="field" aria-label="audio-reactive ascii visual field"></canvas>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <filter id="wob" x="-10%" y="-30%" width="120%" height="160%">
+      <feTurbulence id="wobturb" type="fractalNoise" baseFrequency="0.012 0.028" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="6"/>
+    </filter>
+  </svg>
+
+  <header>
+    <svg id="umark" width="40" height="47" viewBox="0 0 228 269" fill="none" filter="url(#wob)">
+      <path d="M62.2698 42.9601C79.4976 35.9134 96.0056 30.9943 105.486 29.8082L106.841 36.7205L106.841 36.7215C106.518 52.3847 106.204 67.5871 105.908 76.1858C105.342 86.7208 103.133 96.4427 99.6568 110.046C93.115 130.158 88.5643 149.269 81.7692 152.483C80.5292 153.07 78.8904 153.297 77.1569 152.433C68.072 147.905 58.8437 141.512 53.9109 132.606C47.7106 121.411 51.497 104.192 44.7985 102.702C42.4381 102.177 38.4886 101.735 36.0426 104.059C30.5659 109.265 23.8222 116.458 24.0529 124.405C24.6398 144.622 25.34 166.204 43.3436 191.228C50.99 201.857 57.3169 210.335 67.0481 216.908C80.8191 226.208 92.3036 233.296 100.008 235.218C108.233 237.27 121.467 240.373 134.742 236.19C151.087 231.039 167.843 223.728 178.816 204.096C190.306 183.539 201.252 166.457 201.737 156.344C202.453 141.396 200.017 121.875 188.623 104.519C181.773 94.0854 178.541 85.0217 173.281 85.1765C172.151 85.2098 170.947 86.1558 169.673 87.3673C164.347 92.4315 157.072 110.055 147.133 116.268C145.974 116.993 144.006 117.023 143.832 114.205C143.336 106.168 142.551 88.5349 149.989 66.1635C164.018 23.9694 171.706 4.22932 179.452 2.96323C188.704 1.45095 200.677 -1.47976 203.662 5.16995C204.616 7.29557 204.749 10.8437 203.287 22.4282C199.415 53.1233 197.371 73.8515 199.725 75.8894C205.05 80.499 214.122 88.1729 217.634 98.4433C221.221 108.931 231.045 131.344 223.548 162.145C219.788 177.596 216.06 192.193 201.302 209.243C192.698 219.183 183.153 229.546 171.563 238.144C159.806 246.864 148.208 254.998 137.936 259.333C131.302 262.133 117.496 272.059 99.0542 264.633C78.1574 256.217 60.4975 246.803 51.2304 237.348C38.69 224.553 15.0632 207.892 7.93129 187.844C3.06017 174.151 -1.43159 150.691 2.50199 130.506L2.51036 130.463C5.43748 115.442 9.16406 96.3193 19.2121 82.9945C32.2135 65.7533 46.8324 49.2745 62.2698 42.9601Z" stroke-width="4" stroke-linecap="round"/>
+    </svg>
+    <div class="wordmark">
+      <b>underscores — U</b>
+      <span>listening room · sketch 01</span>
+    </div>
+  </header>
+
+  <div id="hint">
+    <h1>drop your copy of U here</h1>
+    <p>"music for malls, airports, hotels, supermarkets." audio stays on your device — nothing uploads. the field reads the signal and redraws itself in type. no files handy? feed it a synthetic signal instead.</p>
+    <div class="btnrow">
+      <button id="pickbtn">choose audio files</button>
+      <button id="demobtn">demo signal</button>
+    </div>
+  </div>
+
+  <aside id="rail" aria-label="tracklist">
+    <div class="railhead">
+      <span>directory — 9 products · each owns a scene</span>
+      <button id="closerail" aria-label="close tracklist">×</button>
+    </div>
+    <ul id="tracks"></ul>
+    <div class="note">
+      fan sketch — not affiliated with underscores. drop your own files (bandcamp mp3/flac) on the page to hear the real thing; the demo signal is a stand-in so the visuals move.
+    </div>
+  </aside>
+
+  <div id="bar">
+    <div id="prog" aria-hidden="true"><i></i></div>
+    <button class="icon" id="prevbtn" aria-label="previous track">|&lt;</button>
+    <button class="icon" id="playbtn" aria-label="play or pause">|&gt;</button>
+    <button class="icon" id="nextbtn" aria-label="next track">&gt;|</button>
+    <div id="nowplaying">
+      <span id="nowtitle">—</span>
+      <span id="nowmode"></span>
+    </div>
+    <span id="time">0:00</span>
+    <button id="tracksbtn">tracks</button>
+  </div>
+
+  <input type="file" id="filein" accept="audio/*" multiple style="display:none">
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ------------------------------------------------------------------ *
+ *  tracklist — U by underscores (March 20, 2026, Mom + Pop / Corporate Rockmusic) *
+ * ------------------------------------------------------------------ */
+const TRACKS = [
+  { n: 1, title: 'Tell Me (U Want It)', len: '3:33', mode: 'cutouts' },
+  { n: 2, title: 'Music',               len: '3:27', mode: 'mark'    },
+  { n: 3, title: 'Hollywood Forever',   len: '4:54', mode: 'rings'   },
+  { n: 4, title: 'The Peace',           len: '2:49', mode: 'static'  },
+  { n: 5, title: 'Innuendo (I Get U)',  len: '3:28', mode: 'cutouts' },
+  { n: 6, title: 'Lovefield',           len: '3:52', mode: 'mark'    },
+  { n: 7, title: 'Do It',               len: '3:33', mode: 'rings'   },
+  { n: 8, title: 'Bodyfeeling',         len: '4:08', mode: 'static'  },
+  { n: 9, title: 'Wish U Well',         len: '4:21', mode: 'mark'    },
+];
+
+/* ------------------------------------------------------------------ *
+ *  theme tokens → canvas colors                                       *
+ * ------------------------------------------------------------------ */
+const COL = { paper: '#FAFAF6', ink: '#141412', accent: '#D6301C' };
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  COL.paper = cs.getPropertyValue('--paper').trim() || COL.paper;
+  COL.ink = cs.getPropertyValue('--ink').trim() || COL.ink;
+  COL.accent = cs.getPropertyValue('--accent').trim() || COL.accent;
+}
+readTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTheme);
+new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ------------------------------------------------------------------ *
+ *  ascii field                                                        *
+ * ------------------------------------------------------------------ */
+const field = $('#field');
+const fctx = field.getContext('2d', { alpha: false });
+const off = document.createElement('canvas');
+const octx = off.getContext('2d', { willReadFrequently: true });
+
+const FONT_PX = 13;
+let cellW = 8, cellH = FONT_PX, cols = 0, rows = 0, W = 0, H = 0;
+let rip = new Float32Array(0), rip2 = new Float32Array(0);
+
+const RAMPS = {
+  mark:    ' .·_-=uoUO@',
+  cutouts: ' ._-~uoU#@',
+  rings:   ' .·:_=ouUO0@',
+  static:  ' ._,:;uU@',
+};
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  W = field.clientWidth; H = field.clientHeight;
+  field.width = Math.max(1, W * dpr);
+  field.height = Math.max(1, H * dpr);
+  fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  fctx.font = FONT_PX + 'px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+  fctx.textBaseline = 'top';
+  cellW = fctx.measureText('M').width || 7.8;
+  cellH = FONT_PX;
+  cols = Math.max(4, Math.floor(W / cellW));
+  rows = Math.max(4, Math.floor(H / cellH));
+  off.width = cols; off.height = rows;
+  rip = new Float32Array(cols * rows);
+  rip2 = new Float32Array(cols * rows);
+}
+resize();
+addEventListener('resize', resize);
+
+/* pointer → ripples */
+function inject(x, y, amt) {
+  const c = Math.floor(x / cellW), r = Math.floor(y / cellH);
+  if (c < 1 || c >= cols - 1 || r < 1 || r >= rows - 1) return;
+  rip[r * cols + c] += amt;
+}
+field.addEventListener('pointermove', e => inject(e.offsetX, e.offsetY, 180));
+field.addEventListener('pointerdown', e => inject(e.offsetX, e.offsetY, 420));
+
+function stepRipples() {
+  for (let y = 1; y < rows - 1; y++) {
+    const row = y * cols;
+    for (let x = 1; x < cols - 1; x++) {
+      const i = row + x;
+      rip2[i] = ((rip[i - 1] + rip[i + 1] + rip[i - cols] + rip[i + cols]) / 2 - rip2[i]) * 0.972;
+    }
+  }
+  const t = rip; rip = rip2; rip2 = t;
+}
+
+/* the U mark as a Path2D (from the album svg, 228x269 box) */
+const UPATH = new Path2D('M62.2698 42.9601C79.4976 35.9134 96.0056 30.9943 105.486 29.8082L106.841 36.7205L106.841 36.7215C106.518 52.3847 106.204 67.5871 105.908 76.1858C105.342 86.7208 103.133 96.4427 99.6568 110.046C93.115 130.158 88.5643 149.269 81.7692 152.483C80.5292 153.07 78.8904 153.297 77.1569 152.433C68.072 147.905 58.8437 141.512 53.9109 132.606C47.7106 121.411 51.497 104.192 44.7985 102.702C42.4381 102.177 38.4886 101.735 36.0426 104.059C30.5659 109.265 23.8222 116.458 24.0529 124.405C24.6398 144.622 25.34 166.204 43.3436 191.228C50.99 201.857 57.3169 210.335 67.0481 216.908C80.8191 226.208 92.3036 233.296 100.008 235.218C108.233 237.27 121.467 240.373 134.742 236.19C151.087 231.039 167.843 223.728 178.816 204.096C190.306 183.539 201.252 166.457 201.737 156.344C202.453 141.396 200.017 121.875 188.623 104.519C181.773 94.0854 178.541 85.0217 173.281 85.1765C172.151 85.2098 170.947 86.1558 169.673 87.3673C164.347 92.4315 157.072 110.055 147.133 116.268C145.974 116.993 144.006 117.023 143.832 114.205C143.336 106.168 142.551 88.5349 149.989 66.1635C164.018 23.9694 171.706 4.22932 179.452 2.96323C188.704 1.45095 200.677 -1.47976 203.662 5.16995C204.616 7.29557 204.749 10.8437 203.287 22.4282C199.415 53.1233 197.371 73.8515 199.725 75.8894C205.05 80.499 214.122 88.1729 217.634 98.4433C221.221 108.931 231.045 131.344 223.548 162.145C219.788 177.596 216.06 192.193 201.302 209.243C192.698 219.183 183.153 229.546 171.563 238.144C159.806 246.864 148.208 254.998 137.936 259.333C131.302 262.133 117.496 272.059 99.0542 264.633C78.1574 256.217 60.4975 246.803 51.2304 237.348C38.69 224.553 15.0632 207.892 7.93129 187.844C3.06017 174.151 -1.43159 150.691 2.50199 130.506L2.51036 130.463C5.43748 115.442 9.16406 96.3193 19.2121 82.9945C32.2135 65.7533 46.8324 49.2745 62.2698 42.9601Z');
+
+/* scattered letters for the "cutouts" scene */
+let letters = [];
+function seedLetters(title) {
+  const chars = title.replace(/[^a-z0-9!?&']/gi, '').slice(0, 14).split('');
+  letters = chars.map(ch => ({
+    ch,
+    x: (0.15 + 0.7 * Math.random()) * W,
+    y: (0.2 + 0.6 * Math.random()) * H,
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: (Math.random() - 0.5) * 0.3,
+    rot: (Math.random() - 0.5) * 1.2,
+    vr: (Math.random() - 0.5) * 0.004,
+    s: 0.7 + Math.random() * 0.9,
+  }));
+}
+
+/* ------------------------------------------------------------------ *
+ *  audio                                                              *
+ * ------------------------------------------------------------------ */
+let AC = null, analyser = null, freq = null;
+let mediaEl = null, mediaSrc = null;
+let demoOn = false, demoTimer = null, demoNodes = null, demoT0 = 0;
+let queue = [];            // { title, mode, len, url? }
+let cur = 0;
+let playingKind = 'none';  // 'none' | 'file' | 'demo'
+
+function ensureAC() {
+  if (!AC) {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = AC.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.82;
+    analyser.connect(AC.destination);
+    freq = new Uint8Array(analyser.frequencyBinCount);
+  }
+  if (AC.state === 'suspended') AC.resume();
+}
+
+function ensureMediaEl() {
+  if (!mediaEl) {
+    mediaEl = new Audio();
+    mediaEl.addEventListener('ended', () => nextTrack(1, true));
+    mediaSrc = AC.createMediaElementSource(mediaEl);
+    mediaSrc.connect(analyser);
+  }
+}
+
+/* --- demo signal: a synthetic loop so visuals move without files --- */
+const DEMO_BASS = [55, 55, 65.4, 55, 49, 49, 55, 73.4]; /* A1 A1 C2 A1 G1 G1 A1 D2 */
+function startDemo() {
+  ensureAC();
+  stopFile();
+  stopDemo();
+  demoOn = true;
+  playingKind = 'demo';
+  const master = AC.createGain();
+  master.gain.value = 0.5;
+  master.connect(analyser);
+
+  const noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+  const nd = noiseBuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+
+  demoNodes = { master, noiseBuf };
+  demoT0 = AC.currentTime + 0.05;
+  let step = 0;
+  const SPB = 60 / 122 / 2; /* 8th notes at 122bpm */
+
+  demoTimer = setInterval(() => {
+    if (!demoOn) return;
+    while (demoT0 < AC.currentTime + 0.25) {
+      scheduleDemoStep(step, demoT0, SPB, master, noiseBuf);
+      demoT0 += SPB;
+      step = (step + 1) % 64;
+    }
+  }, 90);
+  updateNow();
+  syncPlayBtn();
+}
+function scheduleDemoStep(step, t, spb, master, noiseBuf) {
+  const eighth = step % 8;
+  /* kick on quarters */
+  if (step % 2 === 0) {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(160, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.11);
+    g.gain.setValueAtTime(1.0, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + 0.24);
+  }
+  /* bass line */
+  {
+    const o = AC.createOscillator(), g = AC.createGain(), f = AC.createBiquadFilter();
+    o.type = 'square';
+    o.frequency.value = DEMO_BASS[eighth];
+    f.type = 'lowpass'; f.frequency.value = 300 + 250 * Math.sin(step * 0.4);
+    g.gain.setValueAtTime(0.28, t);
+    g.gain.exponentialRampToValueAtTime(0.02, t + spb * 0.9);
+    o.connect(f); f.connect(g); g.connect(master);
+    o.start(t); o.stop(t + spb);
+  }
+  /* hats on offbeats */
+  if (step % 2 === 1) {
+    const s = AC.createBufferSource(), g = AC.createGain(), f = AC.createBiquadFilter();
+    s.buffer = noiseBuf;
+    f.type = 'highpass'; f.frequency.value = 6500;
+    g.gain.setValueAtTime(0.16, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    s.connect(f); f.connect(g); g.connect(master);
+    s.start(t, Math.random(), 0.06);
+  }
+  /* stab every 2 bars */
+  if (step % 32 === 16) {
+    [220, 261.6, 329.6].forEach(fr => {
+      const o = AC.createOscillator(), g = AC.createGain(), f = AC.createBiquadFilter();
+      o.type = 'sawtooth'; o.frequency.value = fr;
+      f.type = 'lowpass'; f.frequency.setValueAtTime(3200, t);
+      f.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+      g.gain.setValueAtTime(0.11, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+      o.connect(f); f.connect(g); g.connect(master);
+      o.start(t); o.stop(t + 0.6);
+    });
+  }
+}
+function stopDemo() {
+  demoOn = false;
+  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+  if (demoNodes) { try { demoNodes.master.disconnect(); } catch (e) {} demoNodes = null; }
+  if (playingKind === 'demo') playingKind = 'none';
+}
+function stopFile() {
+  if (mediaEl) { mediaEl.pause(); }
+  if (playingKind === 'file') playingKind = 'none';
+}
+
+/* --- user files --- */
+function loadFiles(list) {
+  const files = [...list].filter(f => f.type.startsWith('audio') || /\.(mp3|m4a|flac|wav|ogg|aac)$/i.test(f.name));
+  if (!files.length) return;
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  files.forEach((f, i) => {
+    let idx = queue.findIndex(t => !t.url && norm(f.name).includes(norm(t.title)) && norm(t.title).length > 2);
+    if (idx === -1) idx = queue.findIndex(t => !t.url);
+    if (idx === -1) return;
+    queue[idx].url = URL.createObjectURL(f);
+    queue[idx].fileName = f.name;
+  });
+  renderTracks();
+  $('#hint').classList.add('hidden');
+  const first = queue.findIndex(t => t.url);
+  if (first !== -1) playTrack(first);
+}
+
+function playTrack(i) {
+  cur = ((i % queue.length) + queue.length) % queue.length;
+  const t = queue[cur];
+  if (t.mode === 'cutouts') seedLetters(t.title);
+  if (t.url) {
+    ensureAC(); ensureMediaEl();
+    stopDemo();
+    mediaEl.src = t.url;
+    mediaEl.play();
+    playingKind = 'file';
+  } else if (playingKind === 'none') {
+    startDemo();
+  }
+  renderTracks();
+  updateNow();
+  syncPlayBtn();
+}
+function nextTrack(dir, auto) {
+  if (auto) {
+    /* advance to next track that has a file; otherwise stop */
+    for (let k = 1; k <= queue.length; k++) {
+      const j = (cur + k) % queue.length;
+      if (queue[j].url) { playTrack(j); return; }
+    }
+    playingKind = 'none'; syncPlayBtn(); return;
+  }
+  playTrack(cur + dir);
+}
+
+function togglePlay() {
+  ensureAC();
+  if (playingKind === 'file') {
+    if (mediaEl.paused) mediaEl.play(); else mediaEl.pause();
+  } else if (playingKind === 'demo') {
+    stopDemo();
+  } else {
+    const t = queue[cur];
+    if (t && t.url) { ensureMediaEl(); mediaEl.src = mediaEl.src || t.url; playTrack(cur); }
+    else startDemo();
+  }
+  syncPlayBtn();
+}
+function isPlaying() {
+  return playingKind === 'demo' || (playingKind === 'file' && mediaEl && !mediaEl.paused);
+}
+function syncPlayBtn() { $('#playbtn').textContent = isPlaying() ? '||' : '|>'; }
+
+/* ------------------------------------------------------------------ *
+ *  analysis                                                           *
+ * ------------------------------------------------------------------ */
+const level = { bass: 0, mid: 0, high: 0, rms: 0, beat: 0 };
+const hist = new Float32Array(48);
+let histI = 0, lastBeat = 0;
+function analyse(now) {
+  if (!analyser) return idlePulse(now);
+  analyser.getByteFrequencyData(freq);
+  const avg = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += freq[i]; return s / (b - a) / 255; };
+  level.bass = avg(1, 9);
+  level.mid = avg(9, 64);
+  level.high = avg(64, 256);
+  level.rms = level.bass * 0.5 + level.mid * 0.35 + level.high * 0.15;
+  /* beat: bass energy vs rolling mean */
+  let m = 0; for (let i = 0; i < hist.length; i++) m += hist[i];
+  m /= hist.length;
+  hist[histI] = level.bass; histI = (histI + 1) % hist.length;
+  if (level.bass > m * 1.32 + 0.02 && now - lastBeat > 190 && isPlaying()) {
+    level.beat = 1; lastBeat = now;
+  }
+  level.beat *= 0.9;
+  if (!isPlaying()) idlePulse(now);
+}
+function idlePulse(now) {
+  const t = now / 1000;
+  const breathe = RM ? 0.12 : 0.5 + 0.5 * Math.sin(t * 0.6);
+  level.bass = 0.06 + 0.05 * breathe;
+  level.mid = 0.05 + 0.04 * Math.sin(t * 0.4 + 1);
+  level.high = 0.03;
+  level.rms = 0.07;
+  level.beat *= 0.9;
+}
+
+/* ------------------------------------------------------------------ *
+ *  scenes                                                             *
+ * ------------------------------------------------------------------ */
+let boilTick = 0, boilJit = [0, 0, 0, 0];
+function drawScene(now) {
+  const mode = queue[cur] ? queue[cur].mode : 'mark';
+  const t = now / 1000;
+
+  /* trails: fade previous frame */
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  octx.globalAlpha = 1;
+  const fade = mode === 'mark' ? 0.22 : mode === 'static' ? 0.55 : mode === 'rings' ? 0.42 : 0.3;
+  octx.fillStyle = 'rgba(0,0,0,' + fade + ')';
+  octx.fillRect(0, 0, cols, rows);
+
+  /* draw in screen coords mapped onto the grid */
+  octx.setTransform(1 / cellW, 0, 0, 1 / cellH, 0, 0);
+  octx.strokeStyle = '#fff';
+  octx.fillStyle = '#fff';
+
+  /* hand-drawn line boil: hold jitter for a few frames */
+  const bt = Math.floor(now / 125);
+  if (bt !== boilTick) {
+    boilTick = bt;
+    boilJit = [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 0.03, (Math.random() - 0.5) * 6];
+  }
+
+  if (mode === 'mark' || mode === 'static') {
+    const s = Math.min(W, H) * (0.5 + level.beat * 0.06 + (mode === 'static' ? -0.12 : 0)) / 269;
+    octx.save();
+    octx.translate(W / 2 + boilJit[0], H / 2 + boilJit[1]);
+    octx.rotate(RM ? 0 : boilJit[2]);
+    octx.scale(s, s);
+    octx.translate(-114, -134);
+    octx.lineWidth = (2.5 + level.bass * 16) / s;
+    octx.globalAlpha = mode === 'static' ? 0.4 : 0.95;
+    octx.stroke(UPATH);
+    if (mode === 'mark') {
+      octx.globalAlpha = 0.3;
+      octx.translate(boilJit[3] / s, -boilJit[0] / s);
+      octx.lineWidth = (1.5 + level.mid * 8) / s;
+      octx.stroke(UPATH);
+    }
+    octx.restore();
+  }
+
+  if (mode === 'cutouts') {
+    octx.save();
+    const kick = level.beat > 0.5 ? 1 : 0;
+    for (const L of letters) {
+      L.x += L.vx + (RM ? 0 : Math.sin(t + L.rot) * 0.2);
+      L.y += L.vy;
+      L.rot += L.vr;
+      if (kick) { L.vx += (Math.random() - 0.5) * 3; L.vy += (Math.random() - 0.5) * 3; }
+      L.vx *= 0.985; L.vy *= 0.985;
+      if (L.x < 0) L.x = W; if (L.x > W) L.x = 0;
+      if (L.y < 0) L.y = H; if (L.y > H) L.y = 0;
+      octx.save();
+      octx.translate(L.x, L.y);
+      octx.rotate(L.rot);
+      const fs = Math.min(W, H) * 0.16 * L.s * (1 + level.mid * 0.5);
+      octx.font = '700 ' + fs + 'px Arial, sans-serif';
+      octx.textAlign = 'center'; octx.textBaseline = 'middle';
+      octx.fillText(L.ch, 0, 0);
+      octx.restore();
+    }
+    octx.restore();
+  }
+
+  if (mode === 'rings') {
+    octx.save();
+    octx.translate(W / 2, H / 2);
+    const maxR = Math.hypot(W, H) / 2;
+    const n = 22;
+    for (let k = 0; k < n; k++) {
+      const bin = freq ? freq[2 + k * 5] / 255 : level.rms;
+      const r = ((k / n + (RM ? 0 : t * 0.03)) % 1) * maxR + 4;
+      octx.globalAlpha = Math.min(0.8, bin * 1.2 + level.beat * 0.25);
+      octx.lineWidth = 1.5 + bin * 9;
+      octx.beginPath();
+      octx.arc(0, 0, r, 0, Math.PI * 2);
+      octx.stroke();
+    }
+    octx.restore();
+  }
+
+  if (mode === 'static') {
+    const n = Math.floor(level.rms * 2600 + level.beat * 900);
+    for (let i = 0; i < n; i++) {
+      octx.globalAlpha = 0.5 + Math.random() * 0.5;
+      octx.fillRect(Math.random() * W, Math.random() * H, cellW, cellH);
+    }
+  }
+  octx.globalAlpha = 1;
+}
+
+/* ------------------------------------------------------------------ *
+ *  main loop                                                          *
+ * ------------------------------------------------------------------ */
+function frame(now) {
+  requestAnimationFrame(frame);
+  analyse(now);
+  drawScene(now);
+  stepRipples();
+
+  const img = octx.getImageData(0, 0, cols, rows).data;
+  const mode = queue[cur] ? queue[cur].mode : 'mark';
+  const ramp = RAMPS[mode] || RAMPS.mark;
+  const rl = ramp.length - 1;
+
+  fctx.fillStyle = COL.paper;
+  fctx.fillRect(0, 0, W, H);
+  fctx.fillStyle = COL.ink;
+
+  let s = '';
+  for (let r = 0; r < rows; r++) {
+    s = '';
+    const ro = r * cols;
+    for (let c = 0; c < cols; c++) {
+      let v = img[(ro + c) * 4] + Math.abs(rip[ro + c]) * 1.6;
+      if (v > 255) v = 255;
+      s += ramp[(v * rl / 255) | 0];
+    }
+    fctx.fillText(s, 0, r * cellH);
+  }
+
+  /* transport time + progress */
+  if (playingKind === 'file' && mediaEl && mediaEl.duration) {
+    $('#time').textContent = fmt(mediaEl.currentTime) + ' / ' + fmt(mediaEl.duration);
+    $('#prog i').style.width = (mediaEl.currentTime / mediaEl.duration * 100) + '%';
+  } else if (playingKind === 'demo') {
+    $('#time').textContent = 'demo ' + fmt((AC ? AC.currentTime : 0));
+    $('#prog i').style.width = '0%';
+  }
+}
+requestAnimationFrame(frame);
+function fmt(s) { s = Math.floor(s || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+
+/* wobble filter boil */
+if (!RM) {
+  let seed = 7;
+  setInterval(() => {
+    seed = (seed + 1) % 40;
+    document.getElementById('wobturb').setAttribute('seed', seed);
+  }, 160);
+}
+
+/* ------------------------------------------------------------------ *
+ *  ui wiring                                                          *
+ * ------------------------------------------------------------------ */
+function initQueue() {
+  queue = TRACKS.map(t => ({ ...t }));
+  renderTracks();
+  updateNow();
+}
+function renderTracks() {
+  const ul = $('#tracks');
+  ul.innerHTML = '';
+  queue.forEach((t, i) => {
+    const li = document.createElement('li');
+    if (i === cur) li.classList.add('current');
+    if (t.url) li.classList.add('hasfile');
+    const b = document.createElement('button');
+    b.innerHTML = '<span class="n">' + String(t.n).padStart(2, '0') + '</span>'
+      + '<span class="t"></span>'
+      + '<span class="mode">' + t.mode + '</span>'
+      + (t.len ? '<span class="len">' + t.len + '</span>' : '');
+    b.querySelector('.t').textContent = t.title;
+    b.addEventListener('click', () => { playTrack(i); if (innerWidth <= 880) $('#rail').classList.remove('open'); });
+    li.appendChild(b);
+    ul.appendChild(li);
+  });
+}
+function updateNow() {
+  const t = queue[cur];
+  $('#nowtitle').textContent = t ? (String(t.n).padStart(2, '0') + ' — ' + t.title) : '—';
+  $('#nowmode').textContent = t ? ('scene: ' + t.mode + (playingKind === 'demo' ? ' · demo signal' : '')) : '';
+}
+
+$('#pickbtn').addEventListener('click', () => $('#filein').click());
+$('#demobtn').addEventListener('click', () => { startDemo(); $('#hint').classList.add('hidden'); });
+$('#filein').addEventListener('change', e => loadFiles(e.target.files));
+$('#playbtn').addEventListener('click', togglePlay);
+$('#prevbtn').addEventListener('click', () => nextTrack(-1));
+$('#nextbtn').addEventListener('click', () => nextTrack(1));
+$('#tracksbtn').addEventListener('click', () => $('#rail').classList.toggle('open'));
+$('#closerail').addEventListener('click', () => $('#rail').classList.remove('open'));
+$('#prog').addEventListener('click', e => {
+  if (playingKind === 'file' && mediaEl && mediaEl.duration) {
+    const r = e.currentTarget.getBoundingClientRect();
+    mediaEl.currentTime = (e.clientX - r.left) / r.width * mediaEl.duration;
+  }
+});
+
+/* drag & drop anywhere */
+addEventListener('dragover', e => { e.preventDefault(); $('#hint').classList.add('drag'); });
+addEventListener('dragleave', () => $('#hint').classList.remove('drag'));
+addEventListener('drop', e => { e.preventDefault(); $('#hint').classList.remove('drag'); loadFiles(e.dataTransfer.files); });
+
+initQueue();
+seedLetters(TRACKS[0].title);
+})();
+</script>
