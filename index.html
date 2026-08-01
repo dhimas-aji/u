@@ -197,6 +197,7 @@
     <p>"music for malls, airports, hotels, supermarkets." audio stays on your device — nothing uploads. the field reads the signal and redraws itself in type. no files handy? feed it a synthetic signal instead.</p>
     <div class="btnrow">
       <button id="pickbtn">choose audio files</button>
+      <button id="previewbtn">itunes previews</button>
       <button id="demobtn">demo signal</button>
     </div>
   </div>
@@ -237,16 +238,17 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 /* ------------------------------------------------------------------ *
  *  tracklist — U by underscores (March 20, 2026, Mom + Pop / Corporate Rockmusic) *
  * ------------------------------------------------------------------ */
+const ITUNES_ID = 1878382378;
 const TRACKS = [
-  { n: 1, title: 'Tell Me (U Want It)', len: '3:33', mode: 'cutouts' },
-  { n: 2, title: 'Music',               len: '3:27', mode: 'mark'    },
-  { n: 3, title: 'Hollywood Forever',   len: '4:54', mode: 'rings'   },
-  { n: 4, title: 'The Peace',           len: '2:49', mode: 'static'  },
-  { n: 5, title: 'Innuendo (I Get U)',  len: '3:28', mode: 'cutouts' },
-  { n: 6, title: 'Lovefield',           len: '3:52', mode: 'mark'    },
-  { n: 7, title: 'Do It',               len: '3:33', mode: 'rings'   },
-  { n: 8, title: 'Bodyfeeling',         len: '4:08', mode: 'static'  },
-  { n: 9, title: 'Wish U Well',         len: '4:21', mode: 'mark'    },
+  { n: 1, title: 'Tell Me (U Want It)', len: '3:33', mode: 'cutouts'    },
+  { n: 2, title: 'Music',               len: '3:27', mode: 'mark'       },
+  { n: 3, title: 'Hollywood Forever',   len: '4:54', mode: 'corridor'   },
+  { n: 4, title: 'The Peace',           len: '2:49', mode: 'wave'       },
+  { n: 5, title: 'Innuendo (I Get U)',  len: '3:28', mode: 'cutouts'    },
+  { n: 6, title: 'Lovefield',           len: '3:52', mode: 'rings'      },
+  { n: 7, title: 'Do It',               len: '3:33', mode: 'static'     },
+  { n: 8, title: 'Bodyfeeling',         len: '4:08', mode: 'storefront' },
+  { n: 9, title: 'Wish U Well',         len: '4:21', mode: 'mark'       },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -276,10 +278,13 @@ let cellW = 8, cellH = FONT_PX, cols = 0, rows = 0, W = 0, H = 0;
 let rip = new Float32Array(0), rip2 = new Float32Array(0);
 
 const RAMPS = {
-  mark:    ' .·_-=uoUO@',
-  cutouts: ' ._-~uoU#@',
-  rings:   ' .·:_=ouUO0@',
-  static:  ' ._,:;uU@',
+  mark:       ' .·_-=uoUO@',
+  cutouts:    ' ._-~uoU#@',
+  rings:      ' .·:_=ouUO0@',
+  static:     ' ._,:;uU@',
+  corridor:   ' .·_-=|IUO@',
+  storefront: ' .:_=+uoU8@',
+  wave:       ' .·-_=~uoU@',
 };
 
 function resize() {
@@ -344,6 +349,7 @@ function seedLetters(title) {
  *  audio                                                              *
  * ------------------------------------------------------------------ */
 let AC = null, analyser = null, freq = null;
+const wf = new Uint8Array(1024).fill(128); /* time domain, 128 = silence */
 let mediaEl = null, mediaSrc = null;
 let demoOn = false, demoTimer = null, demoNodes = null, demoT0 = 0;
 let queue = [];            // { title, mode, len, url? }
@@ -354,7 +360,7 @@ function ensureAC() {
   if (!AC) {
     AC = new (window.AudioContext || window.webkitAudioContext)();
     analyser = AC.createAnalyser();
-    analyser.fftSize = 2048;
+    analyser.fftSize = 2048; /* frequencyBinCount 1024 == wf.length */
     analyser.smoothingTimeConstant = 0.82;
     analyser.connect(AC.destination);
     freq = new Uint8Array(analyser.frequencyBinCount);
@@ -365,6 +371,8 @@ function ensureAC() {
 function ensureMediaEl() {
   if (!mediaEl) {
     mediaEl = new Audio();
+    /* must be set before any src loads, or the analyser reads silence on cross-origin audio */
+    mediaEl.crossOrigin = 'anonymous';
     mediaEl.addEventListener('ended', () => nextTrack(1, true));
     mediaSrc = AC.createMediaElementSource(mediaEl);
     mediaSrc.connect(analyser);
@@ -480,16 +488,19 @@ function loadFiles(list) {
   if (first !== -1) playTrack(first);
 }
 
+function srcOf(t) { return t.url || t.preview; }
+
 function playTrack(i) {
   cur = ((i % queue.length) + queue.length) % queue.length;
   const t = queue[cur];
   if (t.mode === 'cutouts') seedLetters(t.title);
-  if (t.url) {
+  const src = srcOf(t);
+  if (src) {
     ensureAC(); ensureMediaEl();
     stopDemo();
-    mediaEl.src = t.url;
+    mediaEl.src = src;
     mediaEl.play();
-    playingKind = 'file';
+    playingKind = t.url ? 'file' : 'preview';
   } else if (playingKind === 'none') {
     startDemo();
   }
@@ -502,7 +513,7 @@ function nextTrack(dir, auto) {
     /* advance to next track that has a file; otherwise stop */
     for (let k = 1; k <= queue.length; k++) {
       const j = (cur + k) % queue.length;
-      if (queue[j].url) { playTrack(j); return; }
+      if (srcOf(queue[j])) { playTrack(j); return; }
     }
     playingKind = 'none'; syncPlayBtn(); return;
   }
@@ -511,19 +522,19 @@ function nextTrack(dir, auto) {
 
 function togglePlay() {
   ensureAC();
-  if (playingKind === 'file') {
+  if (playingKind === 'file' || playingKind === 'preview') {
     if (mediaEl.paused) mediaEl.play(); else mediaEl.pause();
   } else if (playingKind === 'demo') {
     stopDemo();
   } else {
-    const t = queue[cur];
-    if (t && t.url) { ensureMediaEl(); mediaEl.src = mediaEl.src || t.url; playTrack(cur); }
+    if (srcOf(queue[cur] || {})) playTrack(cur);
     else startDemo();
   }
   syncPlayBtn();
 }
 function isPlaying() {
-  return playingKind === 'demo' || (playingKind === 'file' && mediaEl && !mediaEl.paused);
+  return playingKind === 'demo'
+    || ((playingKind === 'file' || playingKind === 'preview') && mediaEl && !mediaEl.paused);
 }
 function syncPlayBtn() { $('#playbtn').textContent = isPlaying() ? '||' : '|>'; }
 
@@ -536,6 +547,7 @@ let histI = 0, lastBeat = 0;
 function analyse(now) {
   if (!analyser) return idlePulse(now);
   analyser.getByteFrequencyData(freq);
+  analyser.getByteTimeDomainData(wf);
   const avg = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += freq[i]; return s / (b - a) / 255; };
   level.bass = avg(1, 9);
   level.mid = avg(9, 64);
@@ -559,12 +571,19 @@ function idlePulse(now) {
   level.high = 0.03;
   level.rms = 0.07;
   level.beat *= 0.9;
+  /* scenes that sample freq[] directly (rings, storefront) would go blank while
+     paused, since nothing writes it — give them a slow synthetic spectrum */
+  if (freq) {
+    for (let i = 0; i < 128; i++) {
+      freq[i] = 90 * Math.exp(-i / 45) * (0.55 + 0.45 * Math.sin(t * 0.7 + i * 0.25));
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ *
  *  scenes                                                             *
  * ------------------------------------------------------------------ */
-let boilTick = 0, boilJit = [0, 0, 0, 0];
+let boilTick = 0, boilJit = [0, 0, 0, 0], corridorZ = 0;
 function drawScene(now) {
   const mode = queue[cur] ? queue[cur].mode : 'mark';
   const t = now / 1000;
@@ -572,7 +591,8 @@ function drawScene(now) {
   /* trails: fade previous frame */
   octx.setTransform(1, 0, 0, 1, 0, 0);
   octx.globalAlpha = 1;
-  const fade = mode === 'mark' ? 0.22 : mode === 'static' ? 0.55 : mode === 'rings' ? 0.42 : 0.3;
+  const FADE = { mark: 0.22, cutouts: 0.3, rings: 0.42, static: 0.55, corridor: 0.3, storefront: 0.6, wave: 0.18 };
+  const fade = FADE[mode] || 0.3;
   octx.fillStyle = 'rgba(0,0,0,' + fade + ')';
   octx.fillRect(0, 0, cols, rows);
 
@@ -654,6 +674,59 @@ function drawScene(now) {
       octx.fillRect(Math.random() * W, Math.random() * H, cellW, cellH);
     }
   }
+
+  /* corridor — liminal hallway receding to a vanishing point, bass drives travel speed */
+  if (mode === 'corridor') {
+    octx.save();
+    octx.translate(W / 2 + boilJit[0] * 0.5, H / 2 + boilJit[1] * 0.5);
+    const n = 16;
+    corridorZ += (RM ? 0.0015 : 0.004 + level.bass * 0.03);
+    for (let k = 0; k < n; k++) {
+      const p = (k / n + corridorZ) % 1;
+      const z = p * p; /* perspective ease: rings bunch up at the vanishing point */
+      const w = z * W * 1.5, h = z * H * 1.5;
+      octx.globalAlpha = Math.min(0.9, p * 1.5 * (0.3 + level.mid * 1.4 + level.beat * 0.3));
+      octx.lineWidth = 1.5 + level.bass * 10;
+      octx.strokeRect(-w / 2, -h / 2, w, h);
+    }
+    octx.restore();
+  }
+
+  /* storefront — mall directory grid, each unit lit by its own frequency band */
+  if (mode === 'storefront') {
+    const gx = W > H ? 6 : 3, gy = W > H ? 3 : 6;
+    const padX = W * 0.06, padY = H * 0.12;
+    const cw = (W - padX * 2) / gx, ch = (H - padY * 2) / gy;
+    for (let j = 0; j < gy; j++) {
+      for (let i = 0; i < gx; i++) {
+        const k = j * gx + i;
+        const bin = freq ? freq[4 + k * 7] / 255 : level.rms;
+        const x = padX + i * cw, y = padY + j * ch;
+        const inset = 6 + (1 - bin) * 10;
+        octx.globalAlpha = 0.25 + bin * 0.75;
+        octx.lineWidth = 1.5 + bin * 5;
+        octx.strokeRect(x + inset, y + inset, cw - inset * 2, ch - inset * 2);
+        if (bin > 0.55) { /* unit "open": fill the shopfront */
+          octx.globalAlpha = (bin - 0.55) * 1.6;
+          octx.fillRect(x + inset * 2, y + inset * 2, cw - inset * 4, ch - inset * 4);
+        }
+      }
+    }
+  }
+
+  /* wave — oscilloscope trace of the raw signal */
+  if (mode === 'wave') {
+    octx.globalAlpha = 0.9;
+    octx.lineWidth = 2 + level.rms * 12;
+    octx.beginPath();
+    const step = 4;
+    for (let i = 0; i < wf.length; i += step) {
+      const x = i / wf.length * W;
+      const y = H / 2 + (wf[i] - 128) / 128 * H * 0.4 + boilJit[1] * 0.3;
+      if (i === 0) octx.moveTo(x, y); else octx.lineTo(x, y);
+    }
+    octx.stroke();
+  }
   octx.globalAlpha = 1;
 }
 
@@ -688,7 +761,7 @@ function frame(now) {
   }
 
   /* transport time + progress */
-  if (playingKind === 'file' && mediaEl && mediaEl.duration) {
+  if ((playingKind === 'file' || playingKind === 'preview') && mediaEl && mediaEl.duration) {
     $('#time').textContent = fmt(mediaEl.currentTime) + ' / ' + fmt(mediaEl.duration);
     $('#prog i').style.width = (mediaEl.currentTime / mediaEl.duration * 100) + '%';
   } else if (playingKind === 'demo') {
@@ -722,7 +795,7 @@ function renderTracks() {
   queue.forEach((t, i) => {
     const li = document.createElement('li');
     if (i === cur) li.classList.add('current');
-    if (t.url) li.classList.add('hasfile');
+    if (srcOf(t)) li.classList.add('hasfile');
     const b = document.createElement('button');
     b.innerHTML = '<span class="n">' + String(t.n).padStart(2, '0') + '</span>'
       + '<span class="t"></span>'
@@ -737,9 +810,35 @@ function renderTracks() {
 function updateNow() {
   const t = queue[cur];
   $('#nowtitle').textContent = t ? (String(t.n).padStart(2, '0') + ' — ' + t.title) : '—';
-  $('#nowmode').textContent = t ? ('scene: ' + t.mode + (playingKind === 'demo' ? ' · demo signal' : '')) : '';
+  const tag = playingKind === 'demo' ? ' · demo signal' : playingKind === 'preview' ? ' · itunes preview 30s' : '';
+  $('#nowmode').textContent = t ? ('scene: ' + t.mode + tag) : '';
 }
 
+/* apple serves these 30s clips with `access-control-allow-origin: *`,
+   so unlike a spotify/bandcamp embed the analyser can actually read them */
+async function loadPreviews() {
+  const btn = $('#previewbtn');
+  btn.disabled = true; btn.textContent = 'loading…';
+  try {
+    const r = await fetch('https://itunes.apple.com/lookup?id=' + ITUNES_ID + '&entity=song');
+    if (!r.ok) throw new Error('lookup ' + r.status);
+    const songs = (await r.json()).results.filter(x => x.wrapperType === 'track' && x.previewUrl);
+    if (!songs.length) throw new Error('no previews returned');
+    songs.forEach(s => {
+      const t = queue.find(t => t.n === s.trackNumber);
+      if (t) t.preview = s.previewUrl;
+    });
+    renderTracks();
+    $('#hint').classList.add('hidden');
+    playTrack(0);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'itunes previews';
+    $('#hint p').textContent = "couldn't reach apple's preview feed (" + e.message
+      + '). needs to be served over http — opening the file directly blocks the request. drop your own files instead.';
+  }
+}
+
+$('#previewbtn').addEventListener('click', loadPreviews);
 $('#pickbtn').addEventListener('click', () => $('#filein').click());
 $('#demobtn').addEventListener('click', () => { startDemo(); $('#hint').classList.add('hidden'); });
 $('#filein').addEventListener('change', e => loadFiles(e.target.files));
@@ -749,7 +848,7 @@ $('#nextbtn').addEventListener('click', () => nextTrack(1));
 $('#tracksbtn').addEventListener('click', () => $('#rail').classList.toggle('open'));
 $('#closerail').addEventListener('click', () => $('#rail').classList.remove('open'));
 $('#prog').addEventListener('click', e => {
-  if (playingKind === 'file' && mediaEl && mediaEl.duration) {
+  if ((playingKind === 'file' || playingKind === 'preview') && mediaEl && mediaEl.duration) {
     const r = e.currentTarget.getBoundingClientRect();
     mediaEl.currentTime = (e.clientX - r.left) / r.width * mediaEl.duration;
   }
