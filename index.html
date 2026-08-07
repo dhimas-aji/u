@@ -145,6 +145,38 @@
   #tracks li.current button { color: var(--accent); }
   #tracks li.current .n::before { content: "→"; margin-right: 2px; color: var(--accent); }
   #tracks li.hasfile .t::after { content: " ·"; color: var(--accent); }
+  /* ---------- per-track editor ---------- */
+  #tracks .row { display: flex; align-items: stretch; }
+  #tracks .row .play { flex: 1 1 auto; min-width: 0; }
+  #tracks .row .edit {
+    flex: none; width: auto; border: none; padding: 9px 12px 9px 4px;
+    font-size: 10px; letter-spacing: 0.08em; color: var(--ink-soft);
+  }
+  #tracks li.open .row .edit { color: var(--accent); }
+  #tracks .editor { display: none; padding: 4px 18px 14px; gap: 8px; flex-direction: column; }
+  #tracks li.open .editor { display: flex; }
+  #tracks .editor label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);
+  }
+  #tracks .editor select,
+  #tracks .editor input[type="text"] {
+    font: inherit; font-size: 12px; color: var(--ink); background: transparent;
+    border: 1px solid var(--line); border-radius: 0; padding: 5px 6px; width: 100%;
+  }
+  #tracks .editor select:focus-visible,
+  #tracks .editor input:focus-visible { outline: 2px dashed var(--accent); outline-offset: 1px; }
+  #tracks .editor .uploads { display: flex; gap: 6px; flex-wrap: wrap; }
+  #tracks .editor .mini {
+    width: auto; display: inline-flex;
+    border: 1px solid var(--line); padding: 5px 8px; font-size: 9.5px; letter-spacing: 0.06em;
+  }
+  #tracks .editor .mini:hover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  #tracks .editor .who { color: var(--accent); text-transform: none; letter-spacing: 0; font-size: 10px; }
+
+  /* offscreen but still rendered, so animated gifs keep advancing frames */
+  #mediahold { position: fixed; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0.01; z-index: -1; pointer-events: none; }
+
   #rail .note {
     padding: 12px 18px 0; border-top: 1px solid var(--line);
     color: var(--ink-soft); font-size: 10.5px; line-height: 1.6;
@@ -227,6 +259,9 @@
   </div>
 
   <input type="file" id="filein" accept="audio/*" multiple style="display:none">
+  <input type="file" id="svgin" accept=".svg,image/svg+xml" style="display:none">
+  <input type="file" id="mediain" accept="image/gif,image/png,image/jpeg,image/webp,video/*" style="display:none">
+  <div id="mediahold" aria-hidden="true"></div>
 </div>
 
 <script>
@@ -285,7 +320,10 @@ const RAMPS = {
   corridor:   ' .·_-=|IUO@',
   storefront: ' .:_=+uoU8@',
   wave:       ' .·-_=~uoU@',
+  svg:        ' .·_-=uoUO@',
+  media:      ' .·:_=+uoU0@',
 };
+const MODES = ['mark', 'cutouts', 'rings', 'static', 'corridor', 'storefront', 'wave', 'svg', 'media'];
 
 function resize() {
   const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -329,10 +367,12 @@ function stepRipples() {
 /* the U mark as a Path2D (from the album svg, 228x269 box) */
 const UPATH = new Path2D('M62.2698 42.9601C79.4976 35.9134 96.0056 30.9943 105.486 29.8082L106.841 36.7205L106.841 36.7215C106.518 52.3847 106.204 67.5871 105.908 76.1858C105.342 86.7208 103.133 96.4427 99.6568 110.046C93.115 130.158 88.5643 149.269 81.7692 152.483C80.5292 153.07 78.8904 153.297 77.1569 152.433C68.072 147.905 58.8437 141.512 53.9109 132.606C47.7106 121.411 51.497 104.192 44.7985 102.702C42.4381 102.177 38.4886 101.735 36.0426 104.059C30.5659 109.265 23.8222 116.458 24.0529 124.405C24.6398 144.622 25.34 166.204 43.3436 191.228C50.99 201.857 57.3169 210.335 67.0481 216.908C80.8191 226.208 92.3036 233.296 100.008 235.218C108.233 237.27 121.467 240.373 134.742 236.19C151.087 231.039 167.843 223.728 178.816 204.096C190.306 183.539 201.252 166.457 201.737 156.344C202.453 141.396 200.017 121.875 188.623 104.519C181.773 94.0854 178.541 85.0217 173.281 85.1765C172.151 85.2098 170.947 86.1558 169.673 87.3673C164.347 92.4315 157.072 110.055 147.133 116.268C145.974 116.993 144.006 117.023 143.832 114.205C143.336 106.168 142.551 88.5349 149.989 66.1635C164.018 23.9694 171.706 4.22932 179.452 2.96323C188.704 1.45095 200.677 -1.47976 203.662 5.16995C204.616 7.29557 204.749 10.8437 203.287 22.4282C199.415 53.1233 197.371 73.8515 199.725 75.8894C205.05 80.499 214.122 88.1729 217.634 98.4433C221.221 108.931 231.045 131.344 223.548 162.145C219.788 177.596 216.06 192.193 201.302 209.243C192.698 219.183 183.153 229.546 171.563 238.144C159.806 246.864 148.208 254.998 137.936 259.333C131.302 262.133 117.496 272.059 99.0542 264.633C78.1574 256.217 60.4975 246.803 51.2304 237.348C38.69 224.553 15.0632 207.892 7.93129 187.844C3.06017 174.151 -1.43159 150.691 2.50199 130.506L2.51036 130.463C5.43748 115.442 9.16406 96.3193 19.2121 82.9945C32.2135 65.7533 46.8324 49.2745 62.2698 42.9601Z');
 
+const U_VB = [0, 0, 228, 269];
+
 /* scattered letters for the "cutouts" scene */
 let letters = [];
 function seedLetters(title) {
-  const chars = title.replace(/[^a-z0-9!?&']/gi, '').slice(0, 14).split('');
+  const chars = (title || '').replace(/[^a-z0-9!?&']/gi, '').slice(0, 14).split('');
   letters = chars.map(ch => ({
     ch,
     x: (0.15 + 0.7 * Math.random()) * W,
@@ -490,10 +530,87 @@ function loadFiles(list) {
 
 function srcOf(t) { return t.url || t.preview; }
 
+/* ------------------------------------------------------------------ *
+ *  per-track scene assets                                             *
+ * ------------------------------------------------------------------ */
+/* ponytail: <path> only — shapes like <circle>/<rect>/<polygon> are ignored.
+   flatten them to paths in the editor before exporting. */
+function parseSvg(text) {
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  if (doc.querySelector('parsererror')) throw new Error("that file didn't parse as svg");
+  const svg = doc.querySelector('svg');
+  if (!svg) throw new Error('no <svg> element in that file');
+  const ds = [...doc.querySelectorAll('path')].map(p => p.getAttribute('d')).filter(Boolean);
+  if (!ds.length) throw new Error('no <path> in that svg — flatten shapes to paths and re-export');
+  let vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  if (vb.length !== 4 || vb.some(n => !isFinite(n)) || !vb[2] || !vb[3]) {
+    vb = [0, 0, parseFloat(svg.getAttribute('width')) || 100, parseFloat(svg.getAttribute('height')) || 100];
+  }
+  return { paths: ds.map(d => new Path2D(d)), vb, src: text };
+}
+
+async function loadSvgInto(file, t) {
+  const text = await file.text();
+  const art = parseSvg(text);          /* throws before anything is mutated */
+  t.svg = art; t.svgSrc = text; t.svgName = file.name;
+  t.mode = 'svg';
+}
+
+function loadMediaInto(file, t) {
+  const url = URL.createObjectURL(file);
+  if (t.mediaUrl) URL.revokeObjectURL(t.mediaUrl);
+  if (file.type.startsWith('video')) {
+    const v = document.createElement('video');
+    v.src = url; v.loop = true; v.muted = true; v.playsInline = true;
+    v.play().catch(() => {});
+    t.media = v;
+  } else {
+    /* an animated gif only advances while it is actually being rendered,
+       so it lives in the 1px offscreen holder rather than display:none */
+    const img = new Image();
+    img.src = url;
+    $('#mediahold').replaceChildren(img);
+    t.media = img;
+  }
+  t.mediaUrl = url; t.mediaName = file.name;
+  t.mode = 'media';
+}
+
+/* persist what is cheap to store: scene, cutout text, svg source.
+   uploaded gif/video stay for the session only. */
+const SAVE_KEY = 'u-listening-room-scenes';
+function saveScenes() {
+  try {
+    const d = {};
+    queue.forEach(t => {
+      const e = {};
+      if (t.mode !== TRACKS[t.n - 1].mode) e.mode = t.mode;
+      if (t.text) e.text = t.text;
+      if (t.svgSrc) { e.svg = t.svgSrc; e.svgName = t.svgName; }
+      if (Object.keys(e).length) d[t.n] = e;
+    });
+    localStorage.setItem(SAVE_KEY, JSON.stringify(d));
+  } catch (e) { /* private mode / quota — not worth interrupting playback over */ }
+}
+function loadScenes() {
+  let d;
+  try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); } catch (e) { return; }
+  queue.forEach(t => {
+    const e = d[t.n];
+    if (!e) return;
+    if (e.text) t.text = e.text;
+    if (e.svg) {
+      try { t.svg = parseSvg(e.svg); t.svgSrc = e.svg; t.svgName = e.svgName; } catch (err) {}
+    }
+    /* a saved 'media' scene has no asset this session — leave it on the default */
+    if (e.mode && e.mode !== 'media') t.mode = e.mode;
+  });
+}
+
 function playTrack(i) {
   cur = ((i % queue.length) + queue.length) % queue.length;
   const t = queue[cur];
-  if (t.mode === 'cutouts') seedLetters(t.title);
+  if (t.mode === 'cutouts') seedLetters(t.text || t.title);
   const src = srcOf(t);
   if (src) {
     ensureAC(); ensureMediaEl();
@@ -584,14 +701,37 @@ function idlePulse(now) {
  *  scenes                                                             *
  * ------------------------------------------------------------------ */
 let boilTick = 0, boilJit = [0, 0, 0, 0], corridorZ = 0;
+/* stroke a set of Path2Ds fitted to the field, with the hand-drawn boil and
+   bass-driven weight the U mark uses. shared by the mark/static/svg scenes. */
+function drawMark(art, k, doubled) {
+  const vb = art.vb;
+  const s = Math.min(W, H) * k / Math.max(vb[2], vb[3]);
+  octx.save();
+  octx.translate(W / 2 + boilJit[0], H / 2 + boilJit[1]);
+  octx.rotate(RM ? 0 : boilJit[2]);
+  octx.scale(s, s);
+  octx.translate(-(vb[0] + vb[2] / 2), -(vb[1] + vb[3] / 2));
+  octx.lineWidth = (2.5 + level.bass * 16) / s;
+  octx.globalAlpha = doubled ? 0.95 : 0.4;
+  art.paths.forEach(p => octx.stroke(p));
+  if (doubled) { /* offset ghost pass = the double-traced marker look */
+    octx.globalAlpha = 0.3;
+    octx.translate(boilJit[3] / s, -boilJit[0] / s);
+    octx.lineWidth = (1.5 + level.mid * 8) / s;
+    art.paths.forEach(p => octx.stroke(p));
+  }
+  octx.restore();
+}
+
 function drawScene(now) {
-  const mode = queue[cur] ? queue[cur].mode : 'mark';
+  const tk = queue[cur] || {};
+  const mode = tk.mode || 'mark';
   const t = now / 1000;
 
   /* trails: fade previous frame */
   octx.setTransform(1, 0, 0, 1, 0, 0);
   octx.globalAlpha = 1;
-  const FADE = { mark: 0.22, cutouts: 0.3, rings: 0.42, static: 0.55, corridor: 0.3, storefront: 0.6, wave: 0.18 };
+  const FADE = { mark: 0.22, cutouts: 0.3, rings: 0.42, static: 0.55, corridor: 0.3, storefront: 0.6, wave: 0.18, svg: 0.22, media: 0.85 };
   const fade = FADE[mode] || 0.3;
   octx.fillStyle = 'rgba(0,0,0,' + fade + ')';
   octx.fillRect(0, 0, cols, rows);
@@ -608,23 +748,10 @@ function drawScene(now) {
     boilJit = [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 0.03, (Math.random() - 0.5) * 6];
   }
 
-  if (mode === 'mark' || mode === 'static') {
-    const s = Math.min(W, H) * (0.5 + level.beat * 0.06 + (mode === 'static' ? -0.12 : 0)) / 269;
-    octx.save();
-    octx.translate(W / 2 + boilJit[0], H / 2 + boilJit[1]);
-    octx.rotate(RM ? 0 : boilJit[2]);
-    octx.scale(s, s);
-    octx.translate(-114, -134);
-    octx.lineWidth = (2.5 + level.bass * 16) / s;
-    octx.globalAlpha = mode === 'static' ? 0.4 : 0.95;
-    octx.stroke(UPATH);
-    if (mode === 'mark') {
-      octx.globalAlpha = 0.3;
-      octx.translate(boilJit[3] / s, -boilJit[0] / s);
-      octx.lineWidth = (1.5 + level.mid * 8) / s;
-      octx.stroke(UPATH);
-    }
-    octx.restore();
+  if (mode === 'mark' || mode === 'static' || mode === 'svg') {
+    /* svg mode falls back to the U mark until the track has its own upload */
+    const art = (mode === 'svg' && tk.svg) ? tk.svg : { paths: [UPATH], vb: U_VB };
+    drawMark(art, 0.5 + level.beat * 0.06 + (mode === 'static' ? -0.12 : 0), mode !== 'static');
   }
 
   if (mode === 'cutouts') {
@@ -714,6 +841,23 @@ function drawScene(now) {
     }
   }
 
+  /* media — gif/video/still drawn straight onto the sampling buffer, which the
+     char pass then converts. audio drives zoom and contrast. */
+  if (mode === 'media') {
+    const m = tk.media;
+    const mw = m && (m.videoWidth || m.naturalWidth), mh = m && (m.videoHeight || m.naturalHeight);
+    if (mw && mh) {
+      const sc = Math.min(W / mw, H / mh) * (0.9 + level.bass * 0.22 + level.beat * 0.05);
+      const dw = mw * sc, dh = mh * sc;
+      octx.filter = 'grayscale(1) contrast(' + (1.1 + level.rms * 1.6).toFixed(2) + ')';
+      octx.globalAlpha = 0.9;
+      octx.drawImage(m, (W - dw) / 2 + boilJit[0], (H - dh) / 2 + boilJit[1], dw, dh);
+      octx.filter = 'none';
+    } else {
+      drawMark({ paths: [UPATH], vb: U_VB }, 0.5, true); /* nothing uploaded yet */
+    }
+  }
+
   /* wave — oscilloscope trace of the raw signal */
   if (mode === 'wave') {
     octx.globalAlpha = 0.9;
@@ -786,26 +930,109 @@ if (!RM) {
  * ------------------------------------------------------------------ */
 function initQueue() {
   queue = TRACKS.map(t => ({ ...t }));
+  loadScenes();
   renderTracks();
   updateNow();
 }
+const openEditors = new Set();
+let editTarget = null;
+
 function renderTracks() {
   const ul = $('#tracks');
   ul.innerHTML = '';
   queue.forEach((t, i) => {
     const li = document.createElement('li');
+    li.dataset.n = t.n;
     if (i === cur) li.classList.add('current');
     if (srcOf(t)) li.classList.add('hasfile');
+    if (openEditors.has(t.n)) li.classList.add('open');
+
+    const row = document.createElement('div');
+    row.className = 'row';
+
     const b = document.createElement('button');
+    b.className = 'play';
     b.innerHTML = '<span class="n">' + String(t.n).padStart(2, '0') + '</span>'
       + '<span class="t"></span>'
-      + '<span class="mode">' + t.mode + '</span>'
+      + '<span class="mode"></span>'
       + (t.len ? '<span class="len">' + t.len + '</span>' : '');
     b.querySelector('.t').textContent = t.title;
+    b.querySelector('.mode').textContent = t.mode;
     b.addEventListener('click', () => { playTrack(i); if (innerWidth <= 880) $('#rail').classList.remove('open'); });
-    li.appendChild(b);
+
+    const ed = document.createElement('button');
+    ed.className = 'edit';
+    ed.textContent = openEditors.has(t.n) ? 'close' : 'edit';
+    ed.setAttribute('aria-label', 'edit scene for ' + t.title);
+    ed.addEventListener('click', () => {
+      openEditors.has(t.n) ? openEditors.delete(t.n) : openEditors.add(t.n);
+      renderTracks();
+    });
+
+    row.append(b, ed);
+    li.appendChild(row);
+    if (openEditors.has(t.n)) li.appendChild(buildEditor(t, i));
     ul.appendChild(li);
   });
+}
+
+function buildEditor(t, i) {
+  const box = document.createElement('div');
+  box.className = 'editor';
+
+  const sceneLabel = document.createElement('label');
+  sceneLabel.textContent = 'scene';
+  const sel = document.createElement('select');
+  MODES.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    if (m === t.mode) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', () => {
+    t.mode = sel.value;
+    if (i === cur) { if (t.mode === 'cutouts') seedLetters(t.text || t.title); updateNow(); }
+    saveScenes();
+    renderTracks();
+  });
+  sceneLabel.appendChild(sel);
+
+  const textLabel = document.createElement('label');
+  textLabel.textContent = 'cutout letters';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = t.title;
+  input.value = t.text || '';
+  /* live on input so the field reshapes as you type; persist on blur */
+  input.addEventListener('input', () => {
+    t.text = input.value;
+    if (i === cur && t.mode === 'cutouts') seedLetters(t.text || t.title);
+  });
+  input.addEventListener('change', saveScenes);
+  textLabel.appendChild(input);
+
+  const uploads = document.createElement('div');
+  uploads.className = 'uploads';
+  const svgBtn = document.createElement('button');
+  svgBtn.className = 'mini';
+  svgBtn.textContent = t.svgName ? 'svg: ' + t.svgName : 'upload svg';
+  svgBtn.addEventListener('click', () => { editTarget = t; $('#svgin').click(); });
+  const medBtn = document.createElement('button');
+  medBtn.className = 'mini';
+  medBtn.textContent = t.mediaName ? 'media: ' + t.mediaName : 'upload gif / video';
+  medBtn.addEventListener('click', () => { editTarget = t; $('#mediain').click(); });
+  uploads.append(svgBtn, medBtn);
+
+  const who = document.createElement('div');
+  who.className = 'who';
+
+  box.append(sceneLabel, textLabel, uploads, who);
+  return box;
+}
+
+function editorMsg(t, text) {
+  const el = document.querySelector('#tracks li[data-n="' + t.n + '"] .who');
+  if (el) el.textContent = text;
 }
 function updateNow() {
   const t = queue[cur];
@@ -838,6 +1065,29 @@ async function loadPreviews() {
   }
 }
 
+$('#svgin').addEventListener('change', async e => {
+  const file = e.target.files[0], t = editTarget;
+  e.target.value = ''; /* so re-picking the same file fires change again */
+  if (!file || !t) return;
+  try {
+    await loadSvgInto(file, t);
+    saveScenes();
+    renderTracks();
+    if (t === queue[cur]) updateNow();
+    editorMsg(t, 'svg loaded — ' + t.svg.paths.length + ' path(s)');
+  } catch (err) { editorMsg(t, err.message); }
+});
+
+$('#mediain').addEventListener('change', e => {
+  const file = e.target.files[0], t = editTarget;
+  e.target.value = '';
+  if (!file || !t) return;
+  loadMediaInto(file, t);
+  renderTracks();
+  if (t === queue[cur]) updateNow();
+  editorMsg(t, 'media loaded — scene set to media');
+});
+
 $('#previewbtn').addEventListener('click', loadPreviews);
 $('#pickbtn').addEventListener('click', () => $('#filein').click());
 $('#demobtn').addEventListener('click', () => { startDemo(); $('#hint').classList.add('hidden'); });
@@ -860,6 +1110,6 @@ addEventListener('dragleave', () => $('#hint').classList.remove('drag'));
 addEventListener('drop', e => { e.preventDefault(); $('#hint').classList.remove('drag'); loadFiles(e.dataTransfer.files); });
 
 initQueue();
-seedLetters(TRACKS[0].title);
+seedLetters(queue[0].text || queue[0].title);
 })();
 </script>
