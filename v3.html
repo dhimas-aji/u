@@ -1,0 +1,1297 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>U — listening room v3 (swirl)</title>
+<style>
+  /* v3 commits to one visual world — a phosphor tube — so there is no light
+     theme here. The per-track palette recolours the glass instead. */
+  :root {
+    --bg: #08080a;
+    --ink: #d8d8d8;
+    --dim: rgba(216, 216, 216, 0.45);
+    --line: rgba(216, 216, 216, 0.16);
+    --hot: #e7e3da;
+    --glow: 0 0 8px rgba(231, 227, 218, 0.28);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #app { position: fixed; inset: 0; overflow: hidden; background: var(--bg); }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* the chrome sits on the same glass as the canvas: faint scanlines over
+     everything, so panels read as part of the tube rather than on top of it */
+  #scan {
+    position: absolute; inset: 0; z-index: 8; pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0px,
+      rgba(0, 0, 0, 0) 2px,
+      rgba(0, 0, 0, 0.22) 3px,
+      rgba(0, 0, 0, 0.22) 4px
+    );
+    mix-blend-mode: multiply;
+  }
+
+  .panel {
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    border: 1px solid var(--line);
+    backdrop-filter: blur(2px);
+  }
+
+  /* ---------- header ---------- */
+  header {
+    position: absolute; top: 14px; left: 14px; z-index: 6;
+    padding: 9px 13px; display: flex; flex-direction: column; gap: 3px;
+  }
+  header b {
+    font-weight: 400; font-size: 13px; letter-spacing: 0.16em;
+    color: var(--hot); text-shadow: var(--glow);
+  }
+  header span { font-size: 9.5px; letter-spacing: 0.2em; color: var(--dim); text-transform: uppercase; }
+  header a { color: var(--dim); text-decoration: none; border-bottom: 1px solid var(--line); }
+  header a:hover { color: var(--hot); }
+
+  /* ---------- boot / hint ---------- */
+  #hint {
+    position: absolute; z-index: 7; left: 50%; bottom: 84px;
+    transform: translateX(-50%);
+    width: min(460px, calc(100% - 32px));
+    padding: 16px 18px; text-align: center;
+  }
+  #hint p {
+    margin: 0 0 14px; color: var(--dim); line-height: 1.7; font-size: 11px;
+  }
+  #hint p b { color: var(--hot); font-weight: 400; }
+  .btnrow { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .hidden { display: none !important; }
+
+  button {
+    font: inherit; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); background: transparent;
+    border: 1px solid var(--line); border-radius: 0;
+    padding: 7px 12px; cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  button:hover { color: var(--hot); border-color: var(--hot); text-shadow: var(--glow); }
+  button:focus-visible { outline: 1px dashed var(--hot); outline-offset: 3px; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  /* ---------- status line ---------- */
+  #bar {
+    position: absolute; z-index: 7; left: 14px; right: 14px; bottom: 14px;
+    padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+    display: flex; align-items: center; gap: 12px;
+  }
+  #transport { display: flex; gap: 4px; flex: none; }
+  #transport button { padding: 5px 8px; letter-spacing: 0; }
+  #nowline {
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px;
+    white-space: nowrap; overflow: hidden;
+  }
+  #nowword { color: var(--hot); text-shadow: var(--glow); letter-spacing: 0.14em; font-size: 12px; }
+  #nowsrc { color: var(--dim); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; }
+  #meter {
+    flex: none; letter-spacing: -0.05em; color: var(--hot);
+    font-size: 11px; opacity: 0.75;
+  }
+  #clock { flex: none; color: var(--dim); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- rail ---------- */
+  #rail {
+    position: absolute; z-index: 7; top: 14px; right: 14px; bottom: 74px;
+    width: 300px; display: flex; flex-direction: column;
+  }
+  .railhead {
+    padding: 10px 13px; border-bottom: 1px solid var(--line);
+    font-size: 9.5px; letter-spacing: 0.2em; color: var(--dim); text-transform: uppercase;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .railhead button { display: none; border: none; padding: 2px 5px; font-size: 13px; letter-spacing: 0; }
+  #tracks { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; }
+  #tracks li { display: block; }
+  #tracks .row { display: flex; align-items: baseline; gap: 8px; padding: 0 13px; }
+  #tracks .play {
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px;
+    border: none; padding: 6px 0; text-transform: none; letter-spacing: 0.04em; font-size: 11.5px;
+    text-align: left; color: var(--ink);
+  }
+  #tracks .play:hover { color: var(--hot); border-color: transparent; }
+  #tracks .n { color: var(--dim); font-size: 9.5px; flex: none; font-variant-numeric: tabular-nums; width: 16px; }
+  #tracks .w { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.1em; }
+  #tracks .len { color: var(--dim); font-size: 9.5px; flex: none; font-variant-numeric: tabular-nums; }
+  #tracks li.current .play { color: var(--hot); text-shadow: var(--glow); }
+  #tracks li.current .n::before { content: "\25B8"; margin-right: 3px; }
+  #tracks li.hasfile .w::after { content: " \00B7"; color: var(--hot); }
+  #tracks .edit {
+    flex: none; border: none; padding: 6px 0 6px 4px; font-size: 9px;
+    letter-spacing: 0.12em; color: var(--dim);
+  }
+  #tracks li.open .edit { color: var(--hot); }
+
+  #tracks .editor { display: none; padding: 2px 13px 14px; flex-direction: column; gap: 9px; }
+  #tracks li.open .editor { display: flex; }
+  #tracks .editor label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim);
+  }
+  #tracks .editor input[type="text"] {
+    font: inherit; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--hot); background: transparent;
+    border: 1px solid var(--line); border-radius: 0; padding: 5px 7px; width: 100%;
+  }
+  #tracks .editor input[type="text"]:focus { outline: none; border-color: var(--hot); }
+  #tracks .editor input[type="range"] { width: 100%; accent-color: var(--hot); }
+  #tracks .editor .cols { display: flex; gap: 6px; }
+  #tracks .editor .cols label { flex: 1 1 0; min-width: 0; }
+  #tracks .editor input[type="color"] {
+    width: 100%; height: 24px; padding: 0; cursor: pointer;
+    border: 1px solid var(--line); background: transparent;
+  }
+
+  .note {
+    padding: 10px 13px; border-top: 1px solid var(--line);
+    color: var(--dim); font-size: 9.5px; line-height: 1.7;
+  }
+
+  #nogl {
+    position: absolute; inset: 0; z-index: 9; display: none;
+    align-items: center; justify-content: center; padding: 32px; text-align: center;
+    background: var(--bg); color: var(--dim); line-height: 1.7;
+  }
+
+  @media (max-width: 900px) {
+    #rail {
+      top: auto; left: 14px; right: 14px; bottom: 74px; width: auto;
+      max-height: 58dvh; transform: translateY(calc(100% + 88px));
+      transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1);
+    }
+    #rail.open { transform: translateY(0); }
+    .railhead button { display: block; }
+    #tracksbtn { display: inline-block; }
+    #hint { bottom: 96px; }
+    #clock, #meter { display: none; }
+    #nowline { flex-direction: column; gap: 1px; align-items: flex-start; }
+  }
+  @media (min-width: 901px) { #tracksbtn { display: none; } }
+  @media (prefers-reduced-motion: reduce) { #rail { transition: none; } }
+</style>
+
+<div id="app">
+  <canvas id="view" aria-label="audio-reactive swirl of letters"></canvas>
+  <div id="scan" aria-hidden="true"></div>
+  <div id="nogl">no webgl2 in this browser, so the swirl can't run. v1 and v2 still work.</div>
+
+  <header class="panel">
+    <b>UNDERSCORES / U</b>
+    <span>listening room v3 · swirl · <a href="index.html">v1</a> <a href="v2.html">v2</a></span>
+  </header>
+
+  <div id="hint" class="panel">
+    <p><b>music for malls, airports, hotels, supermarkets.</b><br>each track's name condenses out of the noise. audio stays on your device.</p>
+    <div class="btnrow">
+      <button id="pickbtn">your files</button>
+      <button id="previewbtn">itunes previews</button>
+      <button id="demobtn">demo signal</button>
+    </div>
+  </div>
+
+  <aside id="rail" class="panel" aria-label="tracklist">
+    <div class="railhead">
+      <span>directory — 9 products</span>
+      <button id="closerail" aria-label="close">×</button>
+    </div>
+    <ul id="tracks"></ul>
+    <div class="note">fan sketch, not affiliated with underscores. drop your own files to hear the record.</div>
+  </aside>
+
+  <div id="bar" class="panel">
+    <div id="transport">
+      <button id="prevbtn" aria-label="previous">|&lt;</button>
+      <button id="playbtn" aria-label="play or pause">|&gt;</button>
+      <button id="nextbtn" aria-label="next">&gt;|</button>
+    </div>
+    <div id="nowline">
+      <span id="nowword">—</span>
+      <span id="nowsrc"></span>
+    </div>
+    <span id="meter">░░░░░░░░░░░░</span>
+    <span id="clock">0:00</span>
+    <button id="tracksbtn">tracks</button>
+  </div>
+
+  <input type="file" id="filein" accept="audio/*" multiple style="display:none">
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ------------------------------------------------------------------ *
+ *  album — U by underscores (March 20, 2026, Mom + Pop / Corporate Rockmusic)
+ *  each track carries the short word the swirl resolves into, plus the
+ *  colour of its glass.
+ * ------------------------------------------------------------------ */
+const ITUNES_ID = 1878382378;
+const TRACKS = [
+  { n: 1, title: 'Tell Me (U Want It)', len: '3:33', word: 'TELL ME',     ink: '#e7e3da', logo: '#ffffff', bg: '#0a0a0c' },
+  { n: 2, title: 'Music',               len: '3:27', word: 'MUSIC',       ink: '#ffd166', logo: '#fff6e0', bg: '#140d02' },
+  { n: 3, title: 'Hollywood Forever',   len: '4:54', word: 'HOLLYWOOD',   ink: '#8fd0ff', logo: '#eaf6ff', bg: '#040a1a' },
+  { n: 4, title: 'The Peace',           len: '2:49', word: 'THE PEACE',   ink: '#7fe3a3', logo: '#e9fff0', bg: '#03140c' },
+  { n: 5, title: 'Innuendo (I Get U)',  len: '3:28', word: 'INNUENDO',    ink: '#ff9ed2', logo: '#ffeaf6', bg: '#160410' },
+  { n: 6, title: 'Lovefield',           len: '3:52', word: 'LOVEFIELD',   ink: '#9b8cff', logo: '#efeaff', bg: '#0a0618' },
+  { n: 7, title: 'Do It',               len: '3:33', word: 'DO IT',       ink: '#ff7a6e', logo: '#ffeae7', bg: '#180604' },
+  { n: 8, title: 'Bodyfeeling',         len: '4:08', word: 'BODYFEELING', ink: '#5fe0e0', logo: '#e6ffff', bg: '#021414' },
+  { n: 9, title: 'Wish U Well',         len: '4:21', word: 'WISH U WELL', ink: '#c2f06b', logo: '#f4ffe0', bg: '#0b1204' },
+];
+TRACKS.forEach(t => { t.scanlines = 0.4; t.aberration = 1; t.curvature = 1; });
+
+/* The soup the vortex samples. Rows cycle through these lines and each column
+   indexes straight into one, so short lines leave the field airy — that ragged
+   edge is the look, which is why the lengths vary this much. */
+const SOURCE_TEXT = `music for malls airports hotels supermarkets and every bright room you walk through without ever deciding to
+nine products
+the escalator does not care whether you are going up or merely standing still on something that is
+buy nothing stay longer
+a food court at four in the afternoon is the most honest room in the country because nobody is pretending to be anywhere else
+fluorescent forever
+somewhere between the parking structure and the fountain there is a song playing that nobody chose and everybody hears
+tell me you want it
+the mall closes at nine and the music keeps going in the empty corridor for another twenty minutes
+hold the door
+transient spaces are the only ones that never ask you to stay and that is exactly why they are so easy to love
+wish you well
+a hotel room in a city you cannot name is still a room and the ceiling is still a ceiling and the record still plays
+do it again
+airports are cathedrals for people who have not decided what they believe yet but have somewhere to be by six
+i get you
+written on the road in rooms that all looked the same which is possibly the whole point of the record
+peace and quiet and a vending machine humming in a hallway with nobody in it`;
+
+/* ------------------------------------------------------------------ *
+ *  figlet "slant" — the face the words resolve into. Ported from
+ *  patorjk/figlet.js, uppercase + digits + the punctuation we need.
+ * ------------------------------------------------------------------ */
+const SLANT = {
+  "A": ["    ___ ", "   /   |", "  / /| |", " / ___ |", "/_/  |_|"],
+  "B": ["    ____ ", "   / __ )", "  / __  |", " / /_/ / ", "/_____/  "],
+  "C": ["   ______", "  / ____/", " / /     ", "/ /___   ", "\\____/   "],
+  "D": ["    ____ ", "   / __ \\", "  / / / /", " / /_/ / ", "/_____/  "],
+  "E": ["    ______", "   / ____/", "  / __/   ", " / /___   ", "/_____/   "],
+  "F": ["    ______", "   / ____/", "  / /_    ", " / __/    ", "/_/       "],
+  "G": ["   ______", "  / ____/", " / / __  ", "/ /_/ /  ", "\\____/   "],
+  "H": ["    __  __", "   / / / /", "  / /_/ / ", " / __  /  ", "/_/ /_/   "],
+  "I": ["    ____", "   /  _/", "   / /  ", " _/ /   ", "/___/   "],
+  "J": ["       __", "      / /", " __  / / ", "/ /_/ /  ", "\\____/   "],
+  "K": ["    __ __", "   / //_/", "  / ,<   ", " / /| |  ", "/_/ |_|  "],
+  "L": ["    __ ", "   / / ", "  / /  ", " / /___", "/_____/"],
+  "M": ["    __  ___", "   /  |/  /", "  / /|_/ / ", " / /  / /  ", "/_/  /_/   "],
+  "N": ["    _   __", "   / | / /", "  /  |/ / ", " / /|  /  ", "/_/ |_/   "],
+  "O": ["   ____ ", "  / __ \\", " / / / /", "/ /_/ / ", "\\____/  "],
+  "P": ["    ____ ", "   / __ \\", "  / /_/ /", " / ____/ ", "/_/      "],
+  "Q": ["   ____ ", "  / __ \\", " / / / /", "/ /_/ / ", "\\___\\_\\ "],
+  "R": ["    ____ ", "   / __ \\", "  / /_/ /", " / _, _/ ", "/_/ |_|  "],
+  "S": ["   _____", "  / ___/", "  \\__ \\ ", " ___/ / ", "/____/  "],
+  "T": ["  ______", " /_  __/", "  / /   ", " / /    ", "/_/     "],
+  "U": ["   __  __", "  / / / /", " / / / / ", "/ /_/ /  ", "\\____/   "],
+  "V": [" _    __", "| |  / /", "| | / / ", "| |/ /  ", "|___/   "],
+  "W": [" _       __", "| |     / /", "| | /| / / ", "| |/ |/ /  ", "|__/|__/   "],
+  "X": ["   _  __", "  | |/ /", "  |   / ", " /   |  ", "/_/|_|  "],
+  "Y": ["__  __", "\\ \\/ /", " \\  / ", " / /  ", "/_/   "],
+  "Z": [" _____", "/__  /", "  / / ", " / /__", "/____/"],
+  "0": ["   ____ ", "  / __ \\", " / / / /", "/ /_/ / ", "\\____/  "],
+  "1": ["   ___", "  <  /", "  / / ", " / /  ", "/_/   "],
+  "2": ["   ___ ", "  |__ \\", "  __/ /", " / __/ ", "/____/ "],
+  "3": ["   _____", "  |__  /", "   /_ < ", " ___/ / ", "/____/  "],
+  "4": ["   __ __", "  / // /", " / // /_", "/__  __/", "  /_/   "],
+  "5": ["    ______", "   / ____/", "  /___ \\  ", " ____/ /  ", "/_____/   "],
+  "6": ["   _____", "  / ___/", " / __ \\ ", "/ /_/ / ", "\\____/  "],
+  "7": [" _____", "/__  /", "  / / ", " / /  ", "/_/   "],
+  "8": ["   ____ ", "  ( __ )", " / __  |", "/ /_/ / ", "\\____/  "],
+  "9": ["   ____ ", "  / __ \\", " / /_/ /", " \\__, / ", "/____/  "],
+  " ": ["    ", "    ", "    ", "    ", "    "],
+  "!": ["    __", "   / /", "  / / ", " /_/  ", "(_)   "],
+  "?": ["  ___ ", " /__ \\", "  / _/", " /_/  ", "(_)   "],
+  ".": ["   ", "   ", "   ", " _ ", "(_)"],
+  "-": ["       ", "       ", " ______", "/_____/", "       "],
+};
+
+/* Kerning: slide each glyph left until one of its inked cells would touch one
+   already on the canvas. The blank gutters nest instead of stacking, which is
+   what keeps pairs like L+L from sitting a mile apart. */
+function overlapAllowed(canvas, glyph, leftEdge) {
+  const gw = Math.max(0, ...glyph.map(r => r.length));
+  let shift = 0;
+  for (let s = 1; s <= gw; s++) {
+    let hit = false;
+    for (let r = 0; r < canvas.length && !hit; r++) {
+      const crow = canvas[r], grow = glyph[r] || '';
+      for (let gx = 0; gx < gw; gx++) {
+        if ((grow[gx] || ' ') === ' ') continue;
+        const cx = leftEdge - s + gx;
+        if (cx < 0) continue;
+        if ((crow[cx] || ' ') !== ' ') { hit = true; break; }
+      }
+    }
+    if (hit) break;
+    shift = s;
+  }
+  return shift;
+}
+
+function renderWord(word) {
+  const rowCount = SLANT[' '].length;
+  const glyphs = word.toUpperCase().split('').map(c => {
+    const g = SLANT[c] || SLANT[' '];
+    const w = Math.max(0, ...g.map(r => r.length));
+    return g.map(r => r.padEnd(w, ' '));
+  });
+  if (!glyphs.length) return Array.from({ length: rowCount }, () => '');
+  let canvas = Array.from({ length: rowCount }, () => '');
+  for (const glyph of glyphs) {
+    const gw = Math.max(0, ...glyph.map(r => r.length));
+    const cw = Math.max(0, ...canvas.map(r => r.length));
+    const at = cw - (cw > 0 ? overlapAllowed(canvas, glyph, cw) : 0);
+    const next = [];
+    for (let r = 0; r < rowCount; r++) {
+      const crow = (canvas[r] || '').padEnd(at, ' ');
+      const grow = (glyph[r] || '').padEnd(gw, ' ');
+      let merged = crow.slice(0, at);
+      for (let gx = 0; gx < gw; gx++) {
+        const existing = (canvas[r] || '')[at + gx] || ' ';
+        merged += grow[gx] !== ' ' ? grow[gx] : existing;
+      }
+      next.push(merged);
+    }
+    canvas = next;
+  }
+  const w = Math.max(...canvas.map(r => r.length));
+  return canvas.map(r => r.padEnd(w, ' '));
+}
+
+/* The stencil is the word's footprint plus a halo, including the counters
+   inside letters. Cells inside it are cleared of soup so the name reads as
+   negative space rather than fighting the swirl. */
+const STENCIL_HALO = 4;
+function makeTarget(rows) {
+  const w = Math.max(0, ...rows.map(l => l.length));
+  const padded = rows.map(l => l.padEnd(w, ' '));
+  const stencil = padded.map(line => {
+    const isInk = x => x >= 0 && x < w && line[x] !== undefined && line[x] !== ' ';
+    return Array.from({ length: w }, (_u, x) => {
+      if (isInk(x) || isInk(x - 1) || isInk(x + 1)) return true;
+      let left = false, right = false;
+      for (let d = 1; d <= STENCIL_HALO; d++) {
+        if (isInk(x - d)) left = true;
+        if (isInk(x + d)) right = true;
+      }
+      return left && right;
+    });
+  });
+  return { rows: padded, stencil, width: w };
+}
+
+/* ------------------------------------------------------------------ *
+ *  webgl2                                                             *
+ * ------------------------------------------------------------------ */
+const view = $('#view');
+const gl = view.getContext('webgl2', { alpha: false, antialias: false, depth: false });
+if (!gl) { $('#nogl').style.display = 'flex'; return; }
+gl.disable(gl.DEPTH_TEST);
+
+const TEXT_VERT = `#version 300 es
+in vec2 aCorner; in vec4 aBounds; in vec4 aGlyphUv; in vec4 aColor;
+uniform vec2 uTarget;
+out vec2 vGlyphUv; out vec4 vColor;
+void main() {
+  vec2 px = mix(aBounds.xy, aBounds.zw, aCorner);
+  vec2 clip = vec2((px.x / uTarget.x) * 2.0 - 1.0, 1.0 - (px.y / uTarget.y) * 2.0);
+  gl_Position = vec4(clip, 0.0, 1.0);
+  vGlyphUv = mix(aGlyphUv.xy, aGlyphUv.zw, aCorner);
+  vColor = aColor;
+}`;
+
+const TEXT_FRAG = `#version 300 es
+precision mediump float;
+in vec2 vGlyphUv; in vec4 vColor;
+uniform sampler2D uAtlas;
+out vec4 outColor;
+void main() {
+  float a = texture(uAtlas, vGlyphUv).a;
+  if (a <= 0.001) discard;
+  outColor = vec4(vColor.rgb, vColor.a * a);
+}`;
+
+const CRT_VERT = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+/* barrel bulge + rgb split + scanlines + vignette + a filmic lift. The bulge
+   eases in from flat over the first few seconds, so a load reads as a tube
+   warming up rather than a static frame. */
+const CRT_FRAG = `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform vec2 uRes;
+uniform float uScanline;
+uniform float uAberration;
+uniform float uCurvature;
+uniform vec3 uBg;
+out vec4 outColor;
+float easeOutQuad(float t) { return t * (2.0 - t); }
+void main() {
+  float curve = easeOutQuad(min(uTime / 3.0, 1.0)) * uCurvature;
+  vec2 c = vUv * 2.0 - 1.0;
+  c *= 1.0 + 0.1 * curve;
+  c *= 1.0 - 0.085 * curve + 0.05 * curve * pow(abs(c.yx), vec2(2.0));
+  c = c * 0.5 + 0.5;
+  if (c.x < 0.0 || c.x > 1.0 || c.y < 0.0 || c.y > 1.0) { outColor = vec4(uBg, 1.0); return; }
+
+  float d = uAberration * 0.0028;
+  vec3 col = vec3(
+    texture(uTex, vec2(c.x + d, c.y)).r,
+    texture(uTex, c).g,
+    texture(uTex, vec2(c.x - d, c.y)).b
+  );
+
+  float scan = max(0.0, sin((c.y + uTime * 0.0005) * uRes.y)) * 0.5;
+  col = mix(col, col - vec3(scan), uScanline);
+
+  col = mix(col, uBg, clamp(length(c - 0.5) * 0.7, 0.0, 1.0));
+  col = mix(col, 1.0 - exp(-col * 2.2), 1.0);
+
+  outColor = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function link(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+const textProg = link(TEXT_VERT, TEXT_FRAG);
+const crtProg = link(CRT_VERT, CRT_FRAG);
+
+const T = {
+  aCorner: gl.getAttribLocation(textProg, 'aCorner'),
+  aBounds: gl.getAttribLocation(textProg, 'aBounds'),
+  aGlyphUv: gl.getAttribLocation(textProg, 'aGlyphUv'),
+  aColor: gl.getAttribLocation(textProg, 'aColor'),
+  uTarget: gl.getUniformLocation(textProg, 'uTarget'),
+  uAtlas: gl.getUniformLocation(textProg, 'uAtlas'),
+};
+const Cu = {
+  uTex: gl.getUniformLocation(crtProg, 'uTex'),
+  uTime: gl.getUniformLocation(crtProg, 'uTime'),
+  uRes: gl.getUniformLocation(crtProg, 'uRes'),
+  uScanline: gl.getUniformLocation(crtProg, 'uScanline'),
+  uAberration: gl.getUniformLocation(crtProg, 'uAberration'),
+  uCurvature: gl.getUniformLocation(crtProg, 'uCurvature'),
+  uBg: gl.getUniformLocation(crtProg, 'uBg'),
+};
+
+const textVao = gl.createVertexArray();
+const crtVao = gl.createVertexArray();
+const cornerBuf = gl.createBuffer();
+const boundsBuf = gl.createBuffer();
+const glyphUvBuf = gl.createBuffer();
+const colorBuf = gl.createBuffer();
+const glyphTex = gl.createTexture();
+const sceneTex = gl.createTexture();
+const fbo = gl.createFramebuffer();
+
+gl.bindVertexArray(textVao);
+gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+gl.vertexAttribPointer(T.aCorner, 2, gl.FLOAT, false, 0, 0);
+gl.enableVertexAttribArray(T.aCorner);
+[[boundsBuf, T.aBounds], [glyphUvBuf, T.aGlyphUv], [colorBuf, T.aColor]].forEach(([buf, loc]) => {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribDivisor(loc, 1);
+});
+gl.bindVertexArray(null);
+
+[glyphTex, sceneTex].forEach(t => {
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+});
+
+/* ------------------------------------------------------------------ *
+ *  glyph atlas — every character rasterised once into a hidden 2D
+ *  canvas, uploaded as one texture. Drawing N letters is then N uv
+ *  lookups rather than N canvas writes, which is what lets the field
+ *  be thousands of cells. Two weights: soup regular, resolved word bold.
+ * ------------------------------------------------------------------ */
+const scratch = document.createElement('canvas');
+const sctx = scratch.getContext('2d');
+
+const glyphList = [];
+const glyphIndex = Object.create(null);
+for (let code = 32; code <= 126; code++) {
+  const ch = String.fromCharCode(code);
+  glyphIndex[ch] = glyphList.length;
+  glyphList.push(ch);
+}
+const SPACE_SLOT = glyphIndex[' '];
+const slotOf = (ch, weight) => {
+  const i = glyphIndex[ch];
+  return weight * glyphList.length + (i === undefined ? SPACE_SLOT : i);
+};
+
+let atlas = null;
+function buildAtlas(inkSize) {
+  const base = inkSize + 'px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+  sctx.font = base;
+  sctx.textBaseline = 'alphabetic';
+  sctx.textAlign = 'left';
+  const advance = sctx.measureText('M').width;
+
+  let asc = 0, desc = 0;
+  for (let w = 0; w < 2; w++) {
+    sctx.font = w ? 'bold ' + base : base;
+    for (const g of glyphList) {
+      const m = sctx.measureText(g);
+      asc = Math.max(asc, m.actualBoundingBoxAscent || inkSize * 0.8);
+      desc = Math.max(desc, m.actualBoundingBoxDescent || inkSize * 0.25);
+    }
+  }
+
+  const pad = Math.max(2, Math.ceil(inkSize * 0.18));
+  const cellW = Math.max(1, Math.ceil(advance + pad * 2));
+  const cellH = Math.max(1, Math.ceil(asc + desc + pad * 2));
+  const baseline = pad + Math.ceil(asc);
+  const count = glyphList.length * 2;
+  const cols = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / cols);
+
+  scratch.width = cols * cellW;
+  scratch.height = rows * cellH;
+  sctx.clearRect(0, 0, scratch.width, scratch.height);
+  sctx.fillStyle = '#fff';
+  sctx.textBaseline = 'alphabetic';
+  sctx.textAlign = 'left';
+
+  const uvs = new Array(count);
+  for (let w = 0; w < 2; w++) {
+    sctx.font = w ? 'bold ' + base : base;
+    for (let i = 0; i < glyphList.length; i++) {
+      const idx = w * glyphList.length + i;
+      const cx = (idx % cols) * cellW;
+      const cy = Math.floor(idx / cols) * cellH;
+      sctx.fillText(glyphList[i], cx + pad, cy + baseline);
+      uvs[idx] = [cx / scratch.width, cy / scratch.height,
+                  (cx + cellW) / scratch.width, (cy + cellH) / scratch.height];
+    }
+  }
+
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.bindTexture(gl.TEXTURE_2D, glyphTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scratch);
+
+  return { inkSize, advance, cellW, cellH, baseline, pad, uvs };
+}
+
+/* ------------------------------------------------------------------ *
+ *  field                                                              *
+ * ------------------------------------------------------------------ */
+const TWIST_RATE = 0.1;   /* base angular speed */
+const CORE_FLOOR = 0.1;   /* radius floor, else the centre spins to infinity */
+const FORMATION_SEC = 1.8;
+const BASE_ROWS = 22;
+const SPEED_DIM = 0.55;   /* rim brightness; the fast core reaches 1 */
+const SHOCK_SPEED = 1.4, SHOCK_WIDTH = 0.13, SHOCK_PUSH = 0.12, SHOCK_FADE = 1.9, SHOCK_LIFE = 2.4;
+const WAVE_AMP = 0.16, WAVE_FREQ = 2.4;
+
+const lines = SOURCE_TEXT.split('\n');
+let target = makeTarget(renderWord(TRACKS[0].word));
+let grid = null, bounds = null, glyphUvs = null, colors = null, maxCells = 0;
+let W = 0, H = 0, dpr = 1;
+let lastW = -1, lastH = -1, lastWordKey = '';
+const shocks = [];
+
+function hex2rgb(h) {
+  const v = parseInt(h.replace('#', ''), 16);
+  return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
+}
+
+/* On desktop the rail sits over the right edge of the canvas, so the word is
+   sized and centred against the clear area rather than the full frame —
+   otherwise a long title resolves straight under the tracklist. */
+const railReserve = () => (innerWidth > 900 ? 328 : 0);
+
+function rebuild() {
+  const usableW = Math.max(120, W - railReserve());
+  /* Pick the cell size so the word actually fits: a long title needs more
+     (smaller) rows than a short one, so solve for the rows that give enough
+     columns rather than hard-coding a zoom per track. */
+  const needCols = target.width * 1.18;
+  /* advance is proportional to the ink size, so the row count that yields
+     enough columns can be solved outright — an iterative shrink used to run out
+     of tries on a narrow phone and leave the word clipped at both edges. */
+  sctx.font = '100px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+  const advancePerPx = sctx.measureText('M').width / 100;
+  const rows = Math.min(160, Math.max(
+    Math.round(BASE_ROWS),
+    Math.ceil((needCols * advancePerPx * H) / usableW * 1.06), /* margin covers the ink-size rounding */
+  ));
+
+  atlas = buildAtlas(Math.max(8, Math.round(H / rows)));
+  const gridRows = Math.max(target.rows.length, Math.ceil(H / atlas.inkSize) + 1);
+  const cols = Math.max(4, Math.floor(W / atlas.advance));
+  const usableCols = Math.max(4, Math.floor(usableW / atlas.advance));
+  grid = {
+    cols, rows: gridRows, inkSize: atlas.inkSize,
+    vOffset: Math.round((H - gridRows * atlas.inkSize) / 2),
+    targetX: Math.max(0, Math.round((usableCols - target.width) / 2)),
+    targetY: Math.max(0, Math.round((gridRows - target.rows.length) / 2)),
+  };
+
+  maxCells = gridRows * cols * 3; /* soup + the word's two overlay passes */
+  bounds = new Float32Array(maxCells * 4);
+  glyphUvs = new Float32Array(maxCells * 4);
+  colors = new Float32Array(maxCells * 4);
+  [[boundsBuf, bounds], [glyphUvBuf, glyphUvs], [colorBuf, colors]].forEach(([buf, arr]) => {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, arr.byteLength, gl.DYNAMIC_DRAW);
+  });
+
+  view.width = W * dpr | 0;
+  view.height = H * dpr | 0;
+  gl.bindTexture(gl.TEXTURE_2D, sceneTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, view.width, view.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneTex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+function measure() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  W = view.clientWidth; H = view.clientHeight;
+}
+
+const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
+const mix = (a, b, t) => a * (1 - t) + b * t;
+const easeOutQuad = t => t * (2 - t);
+const cellHash = (c, r) => { const n = Math.sin(c * 127.1 + r * 311.7) * 43758.5453; return n - Math.floor(n); };
+
+let count = 0;
+function compose(spinPhase, formation, ink, logo, turbulence, waveT) {
+  const { sin, cos, sqrt, floor, round, exp, max } = Math;
+  const cols = grid.cols, rows = grid.rows;
+  const tw = target.rows, tWidth = target.width;
+  const halfW = (cols * atlas.advance) / 2;
+  const halfH = (rows * grid.inkSize) / 2;
+
+  /* the sheen on the resolved word is derived from its own colour, so a light
+     logo gets a darker lift instead of a white wash that would blow out */
+  const lum = 0.299 * logo[0] + 0.587 * logo[1] + 0.114 * logo[2];
+  const hi = lum < 0.5
+    ? [mix(logo[0], 1, 0.5), mix(logo[1], 1, 0.5), mix(logo[2], 1, 0.5)]
+    : [mix(logo[0], 0, 0.35), mix(logo[1], 0, 0.35), mix(logo[2], 0, 0.35)];
+
+  count = 0;
+  const push = (slot, x, baseY, rgb, alpha) => {
+    if (alpha <= 0 || count >= maxCells) return;
+    const o = count * 4, uv = atlas.uvs[slot];
+    bounds[o] = x - atlas.pad;
+    bounds[o + 1] = baseY - atlas.baseline;
+    bounds[o + 2] = x - atlas.pad + atlas.cellW;
+    bounds[o + 3] = baseY - atlas.baseline + atlas.cellH;
+    glyphUvs[o] = uv[0]; glyphUvs[o + 1] = uv[1]; glyphUvs[o + 2] = uv[2]; glyphUvs[o + 3] = uv[3];
+    colors[o] = rgb[0]; colors[o + 1] = rgb[1]; colors[o + 2] = rgb[2]; colors[o + 3] = alpha;
+    count++;
+  };
+
+  const turbOn = turbulence > 0.001;
+
+  for (let row = 0; row < rows; row++) {
+    const y = 1 - (row * 2) / rows;
+    const baseY = grid.vOffset + row * grid.inkSize;
+    const sny = ((row + 0.5) / rows) * 2 - 1;
+
+    for (let col = 0; col < cols; col++) {
+      const x = (col * 2) / cols - 1;
+      const snx = ((col + 0.5) / cols) * 2 - 1;
+      const dist = sqrt(x * x + y * y);
+
+      /* the whirlpool: twist grows toward the centre, so the core races and
+         the rim barely turns */
+      const twist = (spinPhase * TWIST_RATE) / max(CORE_FLOOR, dist);
+      const s = sin(twist), cse = cos(twist);
+      const rx = x * cse + y * s;
+      const ry = x * s - y * cse;
+
+      const sampleCol = floor(((rx + 1) / 2) * cols);
+      const sampleRow = floor(((ry + 1) / 2) * rows);
+      const srcLine = lines[((sampleRow % lines.length) + lines.length) % lines.length] || '';
+      let ch = (sampleCol >= 0 && sampleCol < srcLine.length) ? (srcLine[sampleCol] || ' ') : ' ';
+
+      let resolved = ' ';
+      const tx = col - grid.targetX, ty = row - grid.targetY;
+      const inTarget = tx >= 0 && tx < tWidth && ty >= 0 && ty < tw.length;
+      const inLogo = inTarget && !!target.stencil[ty][tx];
+      if (inLogo) {
+        const wordChar = tw[ty][tx];
+        if (wordChar && wordChar !== ' ') {
+          /* walk the character code from the soup letter to the target letter,
+             so the word doesn't cut in — it resolves */
+          ch = String.fromCharCode(round(mix(ch.charCodeAt(0), wordChar.charCodeAt(0), formation)));
+          resolved = ch;
+        } else if (formation > 0.5) {
+          ch = ' ';
+        }
+      }
+      if (ch === ' ' && resolved === ' ') continue;
+
+      /* displacement: beat shockwaves + the ambient audio ripple. The word's
+         footprint is held rigid so the name never warps. */
+      let dx = 0, dy = 0;
+      if (!inLogo) {
+        for (let k = 0; k < shocks.length; k++) {
+          const sh = shocks[k];
+          const ox = snx - sh.x, oy = sny - sh.y;
+          const r = sqrt(ox * ox + oy * oy);
+          const dd = (r - sh.age * SHOCK_SPEED) / SHOCK_WIDTH;
+          const crest = exp(-dd * dd) * exp(-sh.age * SHOCK_FADE);
+          if (crest > 0.002) {
+            const inv = 1 / max(0.0001, r);
+            dx += ox * inv * SHOCK_PUSH * crest;
+            dy += oy * inv * SHOCK_PUSH * crest;
+          }
+        }
+        if (turbOn) {
+          const a = WAVE_AMP * turbulence;
+          const r = sqrt(snx * snx + sny * sny);
+          const w = sin(r * WAVE_FREQ * Math.PI * 1.6 - waveT * Math.PI);
+          const inv = 1 / max(0.08, r);
+          dx += a * w * snx * inv;
+          dy += a * w * sny * inv;
+        }
+      }
+
+      const px = col * atlas.advance + dx * halfW;
+      const by = baseY + dy * halfH;
+
+      /* speed brightness: the fast core renders full, the slow rim dims, so the
+         swirl's energy reads in the colour without a second palette */
+      const bright = mix(SPEED_DIM, 1, clamp01(1 - dist));
+      const jitter = 0.9 + cellHash(col, row) * 0.2;
+      const rgb = [ink[0] * bright * jitter, ink[1] * bright * jitter, ink[2] * bright * jitter];
+
+      if (ch !== ' ') push(slotOf(ch, 0), px, by, rgb, 1);
+      if (resolved !== ' ') {
+        push(slotOf(resolved, 1), px, by, logo, formation);
+        push(slotOf(resolved, 1), px, by, hi, formation * 0.5);
+      }
+    }
+  }
+  return count;
+}
+
+/* ------------------------------------------------------------------ *
+ *  audio                                                              *
+ * ------------------------------------------------------------------ */
+let AC = null, analyser = null, freq = null;
+let mediaEl = null, mediaSrc = null;
+let demoOn = false, demoTimer = null, demoNodes = null, demoT0 = 0;
+let queue = [], cur = 0, playingKind = 'none';
+
+function ensureAC() {
+  if (!AC) {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = AC.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.82;
+    analyser.connect(AC.destination);
+    freq = new Uint8Array(analyser.frequencyBinCount);
+  }
+  if (AC.state === 'suspended') AC.resume();
+}
+function ensureMediaEl() {
+  if (!mediaEl) {
+    mediaEl = new Audio();
+    mediaEl.crossOrigin = 'anonymous'; /* before any src, or the analyser reads silence */
+    mediaEl.addEventListener('ended', () => nextTrack(1, true));
+    mediaSrc = AC.createMediaElementSource(mediaEl);
+    mediaSrc.connect(analyser);
+  }
+}
+
+const DEMO_BASS = [55, 55, 65.4, 55, 49, 49, 55, 73.4];
+function startDemo() {
+  ensureAC(); stopFile(); stopDemo();
+  demoOn = true; playingKind = 'demo';
+  const master = AC.createGain();
+  master.gain.value = 0.5;
+  master.connect(analyser);
+  const noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+  const nd = noiseBuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  demoNodes = { master };
+  demoT0 = AC.currentTime + 0.05;
+  let step = 0;
+  const SPB = 60 / 122 / 2;
+  demoTimer = setInterval(() => {
+    if (!demoOn) return;
+    while (demoT0 < AC.currentTime + 0.25) {
+      demoStep(step, demoT0, SPB, master, noiseBuf);
+      demoT0 += SPB;
+      step = (step + 1) % 64;
+    }
+  }, 90);
+  updateNow(); syncPlay();
+}
+function demoStep(step, t, spb, master, noiseBuf) {
+  if (step % 2 === 0) {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.frequency.setValueAtTime(160, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.11);
+    g.gain.setValueAtTime(1, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.24);
+  }
+  {
+    const o = AC.createOscillator(), g = AC.createGain(), f = AC.createBiquadFilter();
+    o.type = 'square'; o.frequency.value = DEMO_BASS[step % 8];
+    f.type = 'lowpass'; f.frequency.value = 300 + 250 * Math.sin(step * 0.4);
+    g.gain.setValueAtTime(0.28, t);
+    g.gain.exponentialRampToValueAtTime(0.02, t + spb * 0.9);
+    o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + spb);
+  }
+  if (step % 2 === 1) {
+    const s = AC.createBufferSource(), g = AC.createGain(), f = AC.createBiquadFilter();
+    s.buffer = noiseBuf;
+    f.type = 'highpass'; f.frequency.value = 6500;
+    g.gain.setValueAtTime(0.16, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    s.connect(f); f.connect(g); g.connect(master); s.start(t, Math.random(), 0.06);
+  }
+  if (step % 32 === 16) {
+    [220, 261.6, 329.6].forEach(fr => {
+      const o = AC.createOscillator(), g = AC.createGain(), f = AC.createBiquadFilter();
+      o.type = 'sawtooth'; o.frequency.value = fr;
+      f.type = 'lowpass'; f.frequency.setValueAtTime(3200, t);
+      f.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+      g.gain.setValueAtTime(0.11, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+      o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + 0.6);
+    });
+  }
+}
+function stopDemo() {
+  demoOn = false;
+  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+  if (demoNodes) { try { demoNodes.master.disconnect(); } catch (e) {} demoNodes = null; }
+  if (playingKind === 'demo') playingKind = 'none';
+}
+function stopFile() {
+  if (mediaEl) mediaEl.pause();
+  if (playingKind === 'file' || playingKind === 'preview') playingKind = 'none';
+}
+
+const srcOf = t => t.url || t.preview;
+
+function loadFiles(list) {
+  const files = [...list].filter(f => f.type.startsWith('audio') || /\.(mp3|m4a|flac|wav|ogg|aac)$/i.test(f.name));
+  if (!files.length) return;
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  files.forEach(f => {
+    let i = queue.findIndex(t => !t.url && norm(f.name).includes(norm(t.title)) && norm(t.title).length > 2);
+    if (i === -1) i = queue.findIndex(t => !t.url);
+    if (i === -1) return;
+    queue[i].url = URL.createObjectURL(f);
+  });
+  renderTracks();
+  $('#hint').classList.add('hidden');
+  const first = queue.findIndex(t => t.url);
+  if (first !== -1) playTrack(first);
+}
+
+async function loadPreviews() {
+  const btn = $('#previewbtn');
+  btn.disabled = true; btn.textContent = 'loading';
+  try {
+    const r = await fetch('https://itunes.apple.com/lookup?id=' + ITUNES_ID + '&entity=song');
+    if (!r.ok) throw new Error('lookup ' + r.status);
+    const songs = (await r.json()).results.filter(x => x.wrapperType === 'track' && x.previewUrl);
+    if (!songs.length) throw new Error('no previews');
+    songs.forEach(s => {
+      const t = queue.find(t => t.n === s.trackNumber);
+      if (t) t.preview = s.previewUrl;
+    });
+    btn.disabled = false; btn.textContent = 'itunes previews';
+    renderTracks();
+    $('#hint').classList.add('hidden');
+    playTrack(0);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'itunes previews';
+    $('#hint p').innerHTML = "couldn't reach apple's preview feed (" + e.message
+      + '). needs to be served over http — opening the file directly blocks it.';
+  }
+}
+
+let formStart = 0; /* ms timestamp the current formation began */
+function playTrack(i) {
+  cur = ((i % queue.length) + queue.length) % queue.length;
+  const t = queue[cur];
+  const src = srcOf(t);
+  if (src) {
+    ensureAC(); ensureMediaEl(); stopDemo();
+    mediaEl.src = src;
+    mediaEl.play();
+    playingKind = t.url ? 'file' : 'preview';
+  } else if (playingKind === 'none') {
+    startDemo();
+  }
+  setWord(t.word);
+  renderTracks(); updateNow(); syncPlay();
+}
+function nextTrack(dir, auto) {
+  if (auto) {
+    for (let k = 1; k <= queue.length; k++) {
+      const j = (cur + k) % queue.length;
+      if (srcOf(queue[j])) { playTrack(j); return; }
+    }
+    playingKind = 'none'; syncPlay(); return;
+  }
+  playTrack(cur + dir);
+}
+function togglePlay() {
+  ensureAC();
+  if (playingKind === 'file' || playingKind === 'preview') {
+    if (mediaEl.paused) mediaEl.play(); else mediaEl.pause();
+  } else if (playingKind === 'demo') {
+    stopDemo();
+  } else {
+    if (srcOf(queue[cur] || {})) playTrack(cur); else startDemo();
+  }
+  syncPlay();
+}
+const isPlaying = () => playingKind === 'demo'
+  || ((playingKind === 'file' || playingKind === 'preview') && mediaEl && !mediaEl.paused);
+const syncPlay = () => { $('#playbtn').textContent = isPlaying() ? '||' : '|>'; };
+
+/* the word re-forms whenever the track changes, so a new track announces
+   itself by condensing out of the soup */
+function setWord(word) {
+  target = makeTarget(renderWord(word || ' '));
+  lastW = -1; /* force a rebuild: the grid is sized around the word */
+  formStart = 0;
+}
+
+/* ------------------------------------------------------------------ *
+ *  analysis                                                           *
+ * ------------------------------------------------------------------ */
+const level = { bass: 0, mid: 0, high: 0, rms: 0, beat: 0 };
+const hist = new Float32Array(48);
+let histI = 0, lastBeat = 0;
+function analyse(now) {
+  if (!analyser) return idle(now);
+  analyser.getByteFrequencyData(freq);
+  const avg = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += freq[i]; return s / (b - a) / 255; };
+  level.bass = avg(1, 9);
+  level.mid = avg(9, 64);
+  level.high = avg(64, 256);
+  level.rms = level.bass * 0.5 + level.mid * 0.35 + level.high * 0.15;
+  let m = 0; for (let i = 0; i < hist.length; i++) m += hist[i];
+  m /= hist.length;
+  hist[histI] = level.bass; histI = (histI + 1) % hist.length;
+  if (level.bass > m * 1.32 + 0.02 && now - lastBeat > 190 && isPlaying()) {
+    level.beat = 1; lastBeat = now;
+    /* a kick throws a shockwave through the soup */
+    if (!RM) {
+      shocks.push({ x: (Math.random() - 0.5) * 1.2, y: (Math.random() - 0.5) * 1.2, age: 0 });
+      if (shocks.length > 4) shocks.shift();
+    }
+  }
+  level.beat *= 0.9;
+  if (!isPlaying()) idle(now);
+}
+function idle(now) {
+  const t = now / 1000;
+  level.bass = 0.05 + (RM ? 0 : 0.04 * (0.5 + 0.5 * Math.sin(t * 0.6)));
+  level.mid = 0.04; level.high = 0.02; level.rms = 0.05;
+  level.beat *= 0.9;
+}
+
+/* ------------------------------------------------------------------ *
+ *  loop                                                               *
+ * ------------------------------------------------------------------ */
+let spinPhase = 0, waveT = 0, prevTime = 0;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  measure();
+  if (W < 2 || H < 2) return;
+
+  const t = queue[cur] || TRACKS[0];
+  const wordKey = t.word + '|' + W + 'x' + H;
+  if (W !== lastW || H !== lastH || wordKey !== lastWordKey) {
+    rebuild();
+    lastW = W; lastH = H; lastWordKey = wordKey;
+  }
+
+  analyse(now);
+  if (prevTime === 0) prevTime = now;
+  const dt = Math.min(0.05, Math.max(0.001, (now - prevTime) / 1000));
+  prevTime = now;
+  if (formStart === 0) formStart = now;
+
+  /* accumulate the spin instead of scaling elapsed time — scaling would make
+     the whole field jump whenever the bass moved */
+  spinPhase += dt * (1 + level.bass * 2.6 + level.beat * 0.8);
+  waveT += dt * 0.9;
+  for (let i = shocks.length - 1; i >= 0; i--) {
+    shocks[i].age += dt;
+    if (shocks[i].age > SHOCK_LIFE) shocks.splice(i, 1);
+  }
+
+  const elapsed = (now - formStart) / 1000;
+  const formation = easeOutQuad(clamp01(elapsed / FORMATION_SEC));
+  const ink = hex2rgb(t.ink), logo = hex2rgb(t.logo), bg = hex2rgb(t.bg);
+
+  const n = compose(spinPhase, formation, ink, logo, level.rms * 0.8, waveT);
+
+  /* text pass into the offscreen target */
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.viewport(0, 0, view.width, view.height);
+  gl.clearColor(bg[0], bg[1], bg[2], 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(textProg);
+  gl.bindVertexArray(textVao);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, glyphTex);
+  gl.uniform1i(T.uAtlas, 0);
+  gl.uniform2f(T.uTarget, W, H);
+  gl.bindBuffer(gl.ARRAY_BUFFER, boundsBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, bounds, 0, n * 4);
+  gl.bindBuffer(gl.ARRAY_BUFFER, glyphUvBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, glyphUvs, 0, n * 4);
+  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, colors, 0, n * 4);
+  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
+
+  /* crt pass to the screen */
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, view.width, view.height);
+  gl.disable(gl.BLEND);
+  gl.useProgram(crtProg);
+  gl.bindVertexArray(crtVao);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, sceneTex);
+  gl.uniform1i(Cu.uTex, 0);
+  gl.uniform1f(Cu.uTime, now / 1000);
+  gl.uniform2f(Cu.uRes, view.width, view.height);
+  gl.uniform1f(Cu.uScanline, t.scanlines);
+  gl.uniform1f(Cu.uAberration, t.aberration + level.beat * 2.2);
+  gl.uniform1f(Cu.uCurvature, t.curvature);
+  gl.uniform3f(Cu.uBg, bg[0], bg[1], bg[2]);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  paintStatus();
+}
+
+const METER_CELLS = 12;
+function paintStatus() {
+  if (playingKind === 'file' || playingKind === 'preview') {
+    if (mediaEl && mediaEl.duration) {
+      $('#clock').textContent = fmt(mediaEl.currentTime) + ' / ' + fmt(mediaEl.duration);
+    }
+  } else if (playingKind === 'demo') {
+    $('#clock').textContent = 'demo ' + fmt(AC ? AC.currentTime : 0);
+  }
+  const lit = Math.round(clamp01(level.rms * 2.2) * METER_CELLS);
+  $('#meter').textContent = '█'.repeat(lit) + '░'.repeat(METER_CELLS - lit);
+}
+const fmt = s => { s = Math.floor(s || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+view.addEventListener('pointerdown', e => {
+  const r = view.getBoundingClientRect();
+  shocks.push({
+    x: ((e.clientX - r.left) / r.width) * 2 - 1,
+    y: ((e.clientY - r.top) / r.height) * 2 - 1,
+    age: 0,
+  });
+  if (shocks.length > 4) shocks.shift();
+});
+
+/* ------------------------------------------------------------------ *
+ *  ui                                                                 *
+ * ------------------------------------------------------------------ */
+const SAVE_KEY = 'u-listening-room-v3';
+const openEditors = new Set();
+
+function saveScenes() {
+  try {
+    const d = {};
+    queue.forEach((t, i) => {
+      const base = TRACKS[i], e = {};
+      ['word', 'ink', 'logo', 'bg'].forEach(k => { if (t[k] !== base[k]) e[k] = t[k]; });
+      ['scanlines', 'aberration', 'curvature'].forEach(k => { if (t[k] !== base[k]) e[k] = t[k]; });
+      if (Object.keys(e).length) d[t.n] = e;
+    });
+    localStorage.setItem(SAVE_KEY, JSON.stringify(d));
+  } catch (e) { /* private mode or quota — not worth interrupting playback */ }
+}
+function loadScenes() {
+  let d;
+  try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); } catch (e) { return; }
+  queue.forEach(t => {
+    const e = d[t.n];
+    if (e) Object.assign(t, e);
+  });
+}
+
+function initQueue() {
+  queue = TRACKS.map(t => ({ ...t }));
+  loadScenes();
+  setWord(queue[0].word);
+  renderTracks();
+  updateNow();
+}
+
+function renderTracks() {
+  const ul = $('#tracks');
+  ul.innerHTML = '';
+  queue.forEach((t, i) => {
+    const li = document.createElement('li');
+    li.dataset.n = t.n;
+    if (i === cur) li.classList.add('current');
+    if (srcOf(t)) li.classList.add('hasfile');
+    if (openEditors.has(t.n)) li.classList.add('open');
+
+    const row = document.createElement('div');
+    row.className = 'row';
+    const b = document.createElement('button');
+    b.className = 'play';
+    b.innerHTML = '<span class="n">' + String(t.n).padStart(2, '0') + '</span><span class="w"></span>'
+      + '<span class="len">' + t.len + '</span>';
+    b.querySelector('.w').textContent = t.word;
+    b.title = t.title;
+    b.addEventListener('click', () => { playTrack(i); if (innerWidth <= 900) $('#rail').classList.remove('open'); });
+
+    const ed = document.createElement('button');
+    ed.className = 'edit';
+    ed.textContent = openEditors.has(t.n) ? 'close' : 'edit';
+    ed.setAttribute('aria-label', 'edit ' + t.title);
+    ed.addEventListener('click', () => {
+      openEditors.has(t.n) ? openEditors.delete(t.n) : openEditors.add(t.n);
+      renderTracks();
+    });
+
+    row.append(b, ed);
+    li.appendChild(row);
+    if (openEditors.has(t.n)) li.appendChild(buildEditor(t, i));
+    ul.appendChild(li);
+  });
+}
+
+function labelled(text, el) {
+  const l = document.createElement('label');
+  l.textContent = text;
+  l.appendChild(el);
+  return l;
+}
+
+function buildEditor(t, i) {
+  const box = document.createElement('div');
+  box.className = 'editor';
+
+  const word = document.createElement('input');
+  word.type = 'text';
+  word.value = t.word;
+  word.maxLength = 14;
+  word.spellcheck = false;
+  word.addEventListener('input', () => {
+    t.word = word.value;
+    if (i === cur) { setWord(t.word); updateNow(); }
+    const w = document.querySelector('#tracks li[data-n="' + t.n + '"] .w');
+    if (w) w.textContent = t.word;
+  });
+  word.addEventListener('change', saveScenes);
+
+  const cols = document.createElement('div');
+  cols.className = 'cols';
+  [['letters', 'ink'], ['word', 'logo'], ['glass', 'bg']].forEach(([label, key]) => {
+    const c = document.createElement('input');
+    c.type = 'color';
+    c.value = t[key];
+    c.addEventListener('input', () => { t[key] = c.value; });
+    c.addEventListener('change', saveScenes);
+    cols.appendChild(labelled(label, c));
+  });
+
+  const sliders = [
+    ['scanlines', 'scanlines', 0, 1, 0.01],
+    ['aberration', 'aberration', 0, 3, 0.05],
+    ['curvature', 'curvature', 0, 1, 0.01],
+  ].map(([label, key, min, max, step]) => {
+    const r = document.createElement('input');
+    r.type = 'range'; r.min = min; r.max = max; r.step = step; r.value = t[key];
+    r.addEventListener('input', () => { t[key] = +r.value; });
+    r.addEventListener('change', saveScenes);
+    return labelled(label, r);
+  });
+
+  box.append(labelled('resolves into', word), cols, ...sliders);
+  return box;
+}
+
+function updateNow() {
+  const t = queue[cur];
+  $('#nowword').textContent = t ? (String(t.n).padStart(2, '0') + ' ' + t.word) : '—';
+  const tag = playingKind === 'demo' ? 'demo signal'
+    : playingKind === 'preview' ? 'itunes preview 30s'
+    : playingKind === 'file' ? 'your file' : 'standby';
+  $('#nowsrc').textContent = t ? (t.title + ' · ' + tag) : '';
+}
+
+$('#pickbtn').addEventListener('click', () => $('#filein').click());
+$('#previewbtn').addEventListener('click', loadPreviews);
+$('#demobtn').addEventListener('click', () => { startDemo(); $('#hint').classList.add('hidden'); });
+$('#filein').addEventListener('change', e => loadFiles(e.target.files));
+$('#playbtn').addEventListener('click', togglePlay);
+$('#prevbtn').addEventListener('click', () => nextTrack(-1));
+$('#nextbtn').addEventListener('click', () => nextTrack(1));
+$('#tracksbtn').addEventListener('click', () => $('#rail').classList.toggle('open'));
+$('#closerail').addEventListener('click', () => $('#rail').classList.remove('open'));
+
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => { e.preventDefault(); loadFiles(e.dataTransfer.files); });
+
+initQueue();
+requestAnimationFrame(frame);
+})();
+</script>
