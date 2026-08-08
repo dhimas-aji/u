@@ -2,15 +2,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>U — listening room v3 (swirl)</title>
 <style>
-  /* v3 commits to one visual world — a phosphor tube — so there is no light
-     theme here. The per-track palette recolours the glass instead. */
+  /* U is a light record, so this is a paper-white tube rather than a phosphor
+     one: ink printed on the glass, not glowing through it. One palette only —
+     no prefers-color-scheme, no data-theme override. The per-track colour
+     tints the paper instead. */
   :root {
-    --bg: #08080a;
-    --ink: #d8d8d8;
-    --dim: rgba(216, 216, 216, 0.45);
-    --line: rgba(216, 216, 216, 0.16);
-    --hot: #e7e3da;
-    --glow: 0 0 8px rgba(231, 227, 218, 0.28);
+    --bg: #FAFAF6;
+    --ink: #141412;
+    --dim: rgba(20, 20, 18, 0.5);
+    --line: rgba(20, 20, 18, 0.18);
+    --hot: #141412;
+    --accent: #D6301C;
+    --glow: none; /* a glow reads as emission; on paper the mark just sits there */
   }
 
   * { box-sizing: border-box; }
@@ -34,8 +37,8 @@
       to bottom,
       rgba(0, 0, 0, 0) 0px,
       rgba(0, 0, 0, 0) 2px,
-      rgba(0, 0, 0, 0.22) 3px,
-      rgba(0, 0, 0, 0.22) 4px
+      rgba(0, 0, 0, 0.055) 3px,
+      rgba(0, 0, 0, 0.055) 4px
     );
     mix-blend-mode: multiply;
   }
@@ -99,8 +102,8 @@
   #nowword { color: var(--hot); text-shadow: var(--glow); letter-spacing: 0.14em; font-size: 12px; }
   #nowsrc { color: var(--dim); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; }
   #meter {
-    flex: none; letter-spacing: -0.05em; color: var(--hot);
-    font-size: 11px; opacity: 0.75;
+    flex: none; letter-spacing: -0.05em; color: var(--accent);
+    font-size: 11px; opacity: 0.8;
   }
   #clock { flex: none; color: var(--dim); font-size: 10.5px; font-variant-numeric: tabular-nums; }
 
@@ -127,14 +130,14 @@
   #tracks .n { color: var(--dim); font-size: 9.5px; flex: none; font-variant-numeric: tabular-nums; width: 16px; }
   #tracks .w { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.1em; }
   #tracks .len { color: var(--dim); font-size: 9.5px; flex: none; font-variant-numeric: tabular-nums; }
-  #tracks li.current .play { color: var(--hot); text-shadow: var(--glow); }
-  #tracks li.current .n::before { content: "\25B8"; margin-right: 3px; }
-  #tracks li.hasfile .w::after { content: " \00B7"; color: var(--hot); }
+  #tracks li.current .play { color: var(--accent); }
+  #tracks li.current .n::before { content: "\25B8"; margin-right: 3px; color: var(--accent); }
+  #tracks li.hasfile .w::after { content: " \00B7"; color: var(--accent); }
   #tracks .edit {
     flex: none; border: none; padding: 6px 0 6px 4px; font-size: 9px;
     letter-spacing: 0.12em; color: var(--dim);
   }
-  #tracks li.open .edit { color: var(--hot); }
+  #tracks li.open .edit { color: var(--accent); }
 
   #tracks .editor { display: none; padding: 2px 13px 14px; flex-direction: column; gap: 9px; }
   #tracks li.open .editor { display: flex; }
@@ -242,16 +245,19 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
  *  colour of its glass.
  * ------------------------------------------------------------------ */
 const ITUNES_ID = 1878382378;
+/* Paper grounds. `ink` is the soup — a mid tone that reads as texture without
+   fighting the word; `logo` is the resolved word, dark enough to hold the
+   centre; `bg` is the tinted paper the whole tube sits on. */
 const TRACKS = [
-  { n: 1, title: 'Tell Me (U Want It)', len: '3:33', word: 'TELL ME',     ink: '#e7e3da', logo: '#ffffff', bg: '#0a0a0c' },
-  { n: 2, title: 'Music',               len: '3:27', word: 'MUSIC',       ink: '#ffd166', logo: '#fff6e0', bg: '#140d02' },
-  { n: 3, title: 'Hollywood Forever',   len: '4:54', word: 'HOLLYWOOD',   ink: '#8fd0ff', logo: '#eaf6ff', bg: '#040a1a' },
-  { n: 4, title: 'The Peace',           len: '2:49', word: 'THE PEACE',   ink: '#7fe3a3', logo: '#e9fff0', bg: '#03140c' },
-  { n: 5, title: 'Innuendo (I Get U)',  len: '3:28', word: 'INNUENDO',    ink: '#ff9ed2', logo: '#ffeaf6', bg: '#160410' },
-  { n: 6, title: 'Lovefield',           len: '3:52', word: 'LOVEFIELD',   ink: '#9b8cff', logo: '#efeaff', bg: '#0a0618' },
-  { n: 7, title: 'Do It',               len: '3:33', word: 'DO IT',       ink: '#ff7a6e', logo: '#ffeae7', bg: '#180604' },
-  { n: 8, title: 'Bodyfeeling',         len: '4:08', word: 'BODYFEELING', ink: '#5fe0e0', logo: '#e6ffff', bg: '#021414' },
-  { n: 9, title: 'Wish U Well',         len: '4:21', word: 'WISH U WELL', ink: '#c2f06b', logo: '#f4ffe0', bg: '#0b1204' },
+  { n: 1, title: 'Tell Me (U Want It)', len: '3:33', word: 'TELL ME',     ink: '#b2ada0', logo: '#141412', bg: '#FAFAF6' },
+  { n: 2, title: 'Music',               len: '3:27', word: 'MUSIC',       ink: '#d8ab4e', logo: '#6d3f05', bg: '#FEFAEF' },
+  { n: 3, title: 'Hollywood Forever',   len: '4:54', word: 'HOLLYWOOD',   ink: '#93bee0', logo: '#123a63', bg: '#F3F8FD' },
+  { n: 4, title: 'The Peace',           len: '2:49', word: 'THE PEACE',   ink: '#8cc39c', logo: '#134a28', bg: '#F2FAF4' },
+  { n: 5, title: 'Innuendo (I Get U)',  len: '3:28', word: 'INNUENDO',    ink: '#e2a0c1', logo: '#751345', bg: '#FDF3F8' },
+  { n: 6, title: 'Lovefield',           len: '3:52', word: 'LOVEFIELD',   ink: '#a89ee0', logo: '#2a1e66', bg: '#F5F3FD' },
+  { n: 7, title: 'Do It',               len: '3:33', word: 'DO IT',       ink: '#e5a094', logo: '#78190e', bg: '#FEF4F1' },
+  { n: 8, title: 'Bodyfeeling',         len: '4:08', word: 'BODYFEELING', ink: '#87c7c7', logo: '#0a4444', bg: '#EFFAFA' },
+  { n: 9, title: 'Wish U Well',         len: '4:21', word: 'WISH U WELL', ink: '#b3cc7c', logo: '#384d0e', bg: '#F7FBEE' },
 ];
 TRACKS.forEach(t => { t.scanlines = 0.4; t.aberration = 1; t.curvature = 1; });
 
@@ -472,8 +478,17 @@ void main() {
   float scan = max(0.0, sin((c.y + uTime * 0.0005) * uRes.y)) * 0.5;
   col = mix(col, col - vec3(scan), uScanline);
 
-  col = mix(col, uBg, clamp(length(c - 0.5) * 0.7, 0.0, 1.0));
-  col = mix(col, 1.0 - exp(-col * 2.2), 1.0);
+  /* The vignette-toward-background and the filmic lift are both dark-tube
+     tricks: on paper they wash the corners out and pull the ink up to grey.
+     Fade them out as the ground gets lighter, and give the light case a faint
+     edge darkening instead, which reads as print falloff rather than glow. */
+  float bgLum = dot(uBg, vec3(0.299, 0.587, 0.114));
+  float darkMode = 1.0 - smoothstep(0.4, 0.8, bgLum);
+  float vig = clamp(length(c - 0.5) * 0.7, 0.0, 1.0);
+
+  col = mix(col, uBg, vig * darkMode);
+  col = mix(col, 1.0 - exp(-col * 2.2), darkMode);
+  col = mix(col, col * 0.93, vig * (1.0 - darkMode));
 
   outColor = vec4(col, 1.0);
 }`;
@@ -704,19 +719,19 @@ const easeOutQuad = t => t * (2 - t);
 const cellHash = (c, r) => { const n = Math.sin(c * 127.1 + r * 311.7) * 43758.5453; return n - Math.floor(n); };
 
 let count = 0;
-function compose(spinPhase, formation, ink, logo, turbulence, waveT) {
+function compose(spinPhase, formation, ink, logo, bg, turbulence, waveT) {
   const { sin, cos, sqrt, floor, round, exp, max } = Math;
   const cols = grid.cols, rows = grid.rows;
   const tw = target.rows, tWidth = target.width;
   const halfW = (cols * atlas.advance) / 2;
   const halfH = (rows * grid.inkSize) / 2;
 
-  /* the sheen on the resolved word is derived from its own colour, so a light
-     logo gets a darker lift instead of a white wash that would blow out */
-  const lum = 0.299 * logo[0] + 0.587 * logo[1] + 0.114 * logo[2];
-  const hi = lum < 0.5
-    ? [mix(logo[0], 1, 0.5), mix(logo[1], 1, 0.5), mix(logo[2], 1, 0.5)]
-    : [mix(logo[0], 0, 0.35), mix(logo[1], 0, 0.35), mix(logo[2], 0, 0.35)];
+  /* The sheen over the resolved word is pushed AWAY from the ground, not
+     toward white: on paper a white lift would just wash the ink out, so there
+     it deepens instead. */
+  const bgLum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2];
+  const away = bgLum > 0.5 ? 0 : 1;
+  const hi = [mix(logo[0], away, 0.4), mix(logo[1], away, 0.4), mix(logo[2], away, 0.4)];
 
   count = 0;
   const push = (slot, x, baseY, rgb, alpha) => {
@@ -801,11 +816,12 @@ function compose(spinPhase, formation, ink, logo, turbulence, waveT) {
       const px = col * atlas.advance + dx * halfW;
       const by = baseY + dy * halfH;
 
-      /* speed brightness: the fast core renders full, the slow rim dims, so the
-         swirl's energy reads in the colour without a second palette */
-      const bright = mix(SPEED_DIM, 1, clamp01(1 - dist));
-      const jitter = 0.9 + cellHash(col, row) * 0.2;
-      const rgb = [ink[0] * bright * jitter, ink[1] * bright * jitter, ink[2] * bright * jitter];
+      /* Speed shading: the fast core prints at full strength, the slow rim
+         recedes INTO the ground. Fading toward bg rather than scaling the
+         colour is what makes this work on paper — multiplying would have
+         darkened the rim on a light ground, the opposite of receding. */
+      const f = clamp01(mix(SPEED_DIM, 1, clamp01(1 - dist)) * (0.9 + cellHash(col, row) * 0.2));
+      const rgb = [mix(bg[0], ink[0], f), mix(bg[1], ink[1], f), mix(bg[2], ink[2], f)];
 
       if (ch !== ' ') push(slotOf(ch, 0), px, by, rgb, 1);
       if (resolved !== ' ') {
@@ -1080,7 +1096,7 @@ function frame(now) {
   const formation = easeOutQuad(clamp01(elapsed / FORMATION_SEC));
   const ink = hex2rgb(t.ink), logo = hex2rgb(t.logo), bg = hex2rgb(t.bg);
 
-  const n = compose(spinPhase, formation, ink, logo, level.rms * 0.8, waveT);
+  const n = compose(spinPhase, formation, ink, logo, bg, level.rms * 0.8, waveT);
 
   /* text pass into the offscreen target */
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);

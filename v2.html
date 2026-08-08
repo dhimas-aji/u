@@ -10,26 +10,9 @@
     --accent: #D6301C;
     --sheet: rgba(250, 250, 246, 0.94);
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --paper: #0F0F0E;
-      --ink: #F0EFE9;
-      --ink-soft: rgba(240, 239, 233, 0.55);
-      --line: rgba(240, 239, 233, 0.18);
-      --accent: #FF5A3C;
-      --sheet: rgba(15, 15, 14, 0.94);
-    }
-  }
-  :root[data-theme="light"] {
-    --paper: #FAFAF6; --ink: #141412;
-    --ink-soft: rgba(20, 20, 18, 0.55); --line: rgba(20, 20, 18, 0.16);
-    --accent: #D6301C; --sheet: rgba(250, 250, 246, 0.94);
-  }
-  :root[data-theme="dark"] {
-    --paper: #0F0F0E; --ink: #F0EFE9;
-    --ink-soft: rgba(240, 239, 233, 0.55); --line: rgba(240, 239, 233, 0.18);
-    --accent: #FF5A3C; --sheet: rgba(15, 15, 14, 0.94);
-  }
+  /* U is a light record — paper ground, marks printed on it. No dark theme:
+     there is deliberately no prefers-color-scheme or data-theme override, so
+     the page stays on paper whatever the viewer's system is set to. */
 
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
@@ -359,9 +342,7 @@ function readTheme() {
   const cs = getComputedStyle(document.documentElement);
   COL.paper = hex2rgb((cs.getPropertyValue('--paper').trim() || '#FAFAF6'));
 }
-readTheme();
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTheme);
-new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+readTheme(); /* one palette, so this only needs reading once */
 
 /* ------------------------------------------------------------------ *
  *  webgl2 symbol renderer                                             *
